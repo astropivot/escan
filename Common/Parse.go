@@ -2,7 +2,6 @@ package Common
 
 import (
 	"bufio"
-	"fmt"
 	"net"
 	"os"
 	"regexp"
@@ -10,64 +9,109 @@ import (
 	"strings"
 )
 
-func Parse(info *Hostinfo) {
-
+func Parse(info *HostInfoList) {
+	Parseinfo(info)
 }
 
-func Parseinfo(info *Hostinfo) error {
+func Parseinfo(info *HostInfoList) {
+	readToInfoHosts(info)
+	readToInfoPort(info)
+}
+func readToInfoHosts(info *HostInfoList) {
 	tmpHosts := make(map[string]struct{})
-	if HostFile != "" {
-		hosts, err := readfile(HostFile)
+	if Args.Hosts != "" {
+		if strings.Contains(Args.Hosts, ",") {
+			IPlists := strings.Split(Args.Hosts, ",")
+			for _, IP := range IPlists {
+				if IP != "" {
+					ip := ParseHost(IP)
+					for _, i := range ip {
+						if _, ok := tmpHosts[i]; !ok {
+							tmpHosts[i] = struct{}{}
+							info.IPs = append(info.IPs, net.ParseIP(i))
+						}
+					}
+				}
+			}
+		} else {
+			ip := ParseHost(Args.Hosts)
+			for _, i := range ip {
+				if _, ok := tmpHosts[i]; !ok {
+					tmpHosts[i] = struct{}{}
+					info.IPs = append(info.IPs, net.ParseIP(i))
+				}
+			}
+		}
+	}
+	if Args.HostFile != "" {
+		hosts, err := readfile(Args.HostFile)
 		if err != nil {
-			return fmt.Errorf("读取host文件失败:%s", err)
+			LogError("读取host文件失败:%s", err)
+			return
 		}
 		for _, host := range hosts {
 			if host != "" {
-				if _, ok := tmpHosts[host]; !ok {
-					tmpHosts[host] = struct{}{}
-					info.Host = append(info.Host, host)
+				ip := ParseHost(host)
+				for _, i := range ip {
+					if _, ok := tmpHosts[i]; !ok {
+						tmpHosts[i] = struct{}{}
+						info.IPs = append(info.IPs, net.ParseIP(i))
 
+					}
 				}
 			}
 		}
 	}
-	if Hosts != "" {
-		if strings.Contains(Hosts, ",") {
-			IPlists := strings.Split(Hosts, ",")
-			for _, IP := range IPlists {
-				if IP != "" {
 
+}
+func readToInfoPort(info *HostInfoList) {
+	tmpPorts := make(map[int]struct{})
+	if Args.Ports != "" {
+		if strings.Contains(Args.Ports, ",") {
+			_Ports := strings.Split(Args.Ports, ",")
+			for _, _Port := range _Ports {
+				ports := ParsePort(_Port)
+				for _, _port := range ports {
+					if _, ok := tmpPorts[_port]; !ok {
+						tmpPorts[_port] = struct{}{}
+						info.Ports = append(info.Ports, _port)
+					}
 				}
 			}
 		}
-
 	}
-
-	if PortFile != "" {
-		ports, err := readfile(PortFile)
+	if Args.PortFile != "" {
+		ports, err := readfile(Args.PortFile)
 		if err != nil {
-			return fmt.Errorf("读取端口文件失败:%s", err)
+			LogError("读取端口文件失败:%s", err)
+			return
 		}
-		tmpPorts := make(map[int]struct{})
 		for _, port := range ports {
 			if port != "" {
 				_port := ParsePort(port)
 				for _, i := range _port {
 					if _, ok := tmpPorts[i]; !ok {
 						tmpPorts[i] = struct{}{}
-						info.Port = append(info.Port, i)
+						info.Ports = append(info.Ports, i)
 					}
 				}
 			}
 		}
 	}
-	return nil
+	if info.Ports == nil || len(info.Ports) == 0 {
+		info.Ports = []int{20, 21, 22, 23, 80, 81, 110, 135, 139, 143, 389, 443, 445, 502, 873, 993, 995, 1433, 1521, 3306, 5432, 5672, 6379, 7001, 7687, 8000, 8005, 8009, 8080, 8089, 8443, 9000, 9042, 9092, 9200, 10051, 11211, 15672, 27017, 61616}
+	}
+	if len(tmpPorts) == 0 && Args.Ports == "" && Args.PortFile == "" {
+		for i := 1; i < 1000; i++ {
+			info.Ports = append(info.Ports, i)
+		}
+	}
 }
 
 func readfile(filename string) ([]string, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		LogError(EORROR_OPEN_FILE, filename, err.Error())
+		LogError("打开文件失败:%s,%s", filename, err.Error())
 		return nil, err
 	}
 	defer file.Close()
@@ -83,10 +127,10 @@ func readfile(filename string) ([]string, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		LogError(EORROR_READ_FILE, filename, err.Error())
+		LogError("读取文件失败:%s,%s", filename, err.Error())
 		return nil, err
 	}
-	LogInfo(SUCCESS_READ_FILE, filename, lineCount)
+	LogInfo("读取文件:%s,行数:%d", filename, lineCount)
 	return content, nil
 
 }

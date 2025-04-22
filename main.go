@@ -1,11 +1,22 @@
 package main
 
-import Common "escan/Common"
+import (
+	"escan/Common"
+	"escan/Core/run"
+	"fmt"
+	"os"
+)
 
 func main() {
 	Common.InitLogger()
-	var info Common.Hostinfo
-	Common.Flag()
+	var info Common.HostInfoList
+	Common.Args.SetFlag()
+	fmt.Println("asasasssss")
 	Common.Parse(&info)
-
+	if err := Common.InitOutput(); err != nil {
+		Common.LogError("InitOutput error:%s", err.Error())
+		os.Exit(1)
+	}
+	defer Common.CloseOutput()
+	run.Scan(&info)
 }

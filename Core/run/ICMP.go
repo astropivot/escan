@@ -1,432 +1,155 @@
 package run
 
 import (
-	"bytes"
+	"context"
 	"escan/Common"
-	"fmt"
 	"net"
-	"os/exec"
-	"runtime"
-	"strings"
+	"os"
 	"sync"
 	"time"
 
 	"golang.org/x/net/icmp"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
-
-type _DynamicQueue struct {
-	chan_live chan net.IP
-	buffer    []net.IP // 动态缓冲
-	lock      sync.Mutex
-	flag      bool
-}
-
-func (dq *_DynamicQueue) Enqueue(v net.IP) {
-	dq.lock.Lock()
-	dq.buffer = append(dq.buffer, v)
-	dq.lock.Unlock()
-}
-
-func (dq *_DynamicQueue) Dequeue() net.IP {
-	dq.lock.Lock()
-	defer dq.lock.Unlock()
-	if len(dq.buffer) == 0 {
-		return nil
-	}
-	v := dq.buffer[0]
-	dq.buffer = dq.buffer[1:]
-	return v
-}
-
-func (dq *_DynamicQueue) Len() int {
-	dq.lock.Lock()
-	defer dq.lock.Unlock()
-	return len(dq.buffer)
-}
-
-func (dq *_DynamicQueue) Close() {
-	dq.lock.Lock()
-	defer dq.lock.Unlock()
-	dq.flag = false
-
-}
 
 var (
-	AliveHosts _DynamicQueue               // 存活主机列表
-	ExistHosts = make(map[string]struct{}) // 已发现主机记录
-	livewg     sync.WaitGroup              // 存活检测等待组
+	_ExistIP     = make(map[string]struct{})
+	_lockExistIP = sync.Mutex{}
 )
 
-// CheckLive 检测主机存活状态
-func CheckLive_v2(info *Common.HostInfoList, Ping bool) {
-	// 创建主机通道
-	var hostslist []net.IP = info.IPs
-	chanHosts := make(chan net.IP, len(hostslist))
-
-	// 处理存活主机
-	go handleAliveHosts(chanHosts, hostslist, Ping)
-
-	probeWithICMP(hostslist, chanHosts)
-
-	// 等待所有检测完成
-	livewg.Wait()
-	close(chanHosts)
-
-	// 输出存活统计信息
-	// printAliveStats(hostslist)
-
+func isExistIP(ip net.IP) bool {
+	_lockExistIP.Lock()
+	defer _lockExistIP.Unlock()
+	_, ok := _ExistIP[ip.String()]
+	return ok
 }
 
-// IsContain 检查切片中是否包含指定元素
-func IsContain(items []net.IP, item net.IP) bool {
-	for _, eachItem := range items {
-		if eachItem.String() == item.String() {
-			return true
-		}
-	}
-	return false
-}
-
-func handleAliveHosts(chanHosts chan net.IP, hostslist []net.IP, isPing bool) {
-	for ip := range chanHosts {
-		if _, ok := ExistHosts[ip.String()]; !ok && IsContain(hostslist, ip) {
-			ExistHosts[ip.String()] = struct{}{}
-			AliveHosts.Enqueue(ip)
-
-		}
-		livewg.Done()
-	}
-}
-
-// probeWithICMP 使用ICMP方式探测
-func probeWithICMP(hostslist []net.IP, chanHosts chan net.IP) {
-	// 尝试监听本地ICMP
-	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-	if err == nil {
-		RunIcmp1(hostslist, conn, chanHosts)
-		return
-	}
-
-	// 尝试无监听ICMP探测
-	conn2, err := net.DialTimeout("ip4:icmp", "127.0.0.1", 3*time.Second)
-	if err == nil {
-		defer conn2.Close()
-		RunIcmp2(hostslist, chanHosts)
-		return
-	}
-
-	// 降级使用ping探测
-	// RunPing_v2(hostslist, chanHosts)
-}
-
-// // printAliveStats 打印存活统计信息
-// func printAliveStats(hostslist []string) {
-// 	// 大规模扫描时输出 /16 网段统计
-// 	if len(hostslist) > 1000 {
-// 		arrTop, arrLen := ArrayCountValueTop(AliveHosts, Common.LiveTop, true)
-// 		for i := 0; i < len(arrTop); i++ {
-// 			Common.LogSuccess(Common.GetText("subnet_16_alive", arrTop[i], arrLen[i]))
-// 		}
-// 	}
-// 	// 输出 /24 网段统计
-// 	if len(hostslist) > 256 {
-// 		arrTop, arrLen := ArrayCountValueTop(AliveHosts, Common.LiveTop, false)
-// 		for i := 0; i < len(arrTop); i++ {
-// 			Common.LogSuccess(Common.GetText("subnet_24_alive", arrTop[i], arrLen[i]))
-// 		}
-// 	}
-// }
-
-// RunIcmp1 使用ICMP批量探测主机存活(监听模式)
-func RunIcmp1(hostslist []net.IP, conn *icmp.PacketConn, chanHosts chan net.IP) {
-	endflag := false
-
-	// 启动监听协程
-	go func() {
-		for {
-			if endflag {
-				return
-			}
-			// 接收ICMP响应
-			msg := make([]byte, 100)
-			_, sourceIP, _ := conn.ReadFrom(msg)
-			if sourceIP != nil {
-				livewg.Add(1)
-				chanHosts <- net.ParseIP(sourceIP.String())
-			}
-		}
-	}()
-
-	// 发送ICMP请求
-	for _, host := range hostslist {
-		dst, _ := net.ResolveIPAddr("ip", host.String())
-		IcmpByte := makemsg(host.String())
-		conn.WriteTo(IcmpByte, dst)
-	}
-
-	// 等待响应
-	start := time.Now()
-	for {
-		// 所有主机都已响应则退出
-		if AliveHosts.Len() == len(hostslist) {
-			break
-		}
-
-		// 根据主机数量设置超时时间
-		since := time.Since(start)
-		wait := time.Second * 6
-		if len(hostslist) <= 256 {
-			wait = time.Second * 3
-		}
-
-		if since > wait {
-			break
-		}
-	}
-
-	endflag = true
-	conn.Close()
-}
-
-// RunIcmp2 使用ICMP并发探测主机存活(无监听模式)
-func RunIcmp2(hostslist []net.IP, chanHosts chan net.IP) {
-	// 控制并发数
-	num := 1000
-	if len(hostslist) < num {
-		num = len(hostslist)
-	}
-
-	var wg sync.WaitGroup
-	limiter := make(chan struct{}, num)
-
-	// 并发探测
-	for _, host := range hostslist {
-		wg.Add(1)
-		limiter <- struct{}{}
-
-		go func(host string) {
-			defer func() {
-				<-limiter
-				wg.Done()
-			}()
-
-			if icmpalive(host) {
-				livewg.Add(1)
-				chanHosts <- net.ParseIP(host)
-			}
-		}(host.String())
-	}
-
-	wg.Wait()
-	close(limiter)
-}
-
-// icmpalive 检测主机ICMP是否存活
-func icmpalive(host string) bool {
-	startTime := time.Now()
-
-	// 建立ICMP连接
-	conn, err := net.DialTimeout("ip4:icmp", host, 6*time.Second)
+func RunICMP(iplist []net.IP, chan_live_result chan net.IP, chan_may_not_live chan net.IP) {
+	con4, con6, err := initListeners()
 	if err != nil {
-		return false
-	}
-	defer conn.Close()
-
-	// 设置超时时间
-	if err := conn.SetDeadline(startTime.Add(6 * time.Second)); err != nil {
-		return false
-	}
-
-	// 构造并发送ICMP请求
-	msg := makemsg(host)
-	if _, err := conn.Write(msg); err != nil {
-		return false
-	}
-
-	// 接收ICMP响应
-	receive := make([]byte, 60)
-	if _, err := conn.Read(receive); err != nil {
-		return false
-	}
-
-	return true
-}
-
-// RunPing 使用系统Ping命令并发探测主机存活
-func RunPing_v2(hostslist []string, chanHosts chan string) {
-	var wg sync.WaitGroup
-	// 限制并发数为50
-	limiter := make(chan struct{}, 50)
-
-	// 并发探测
-	for _, host := range hostslist {
-		wg.Add(1)
-		limiter <- struct{}{}
-
-		go func(host string) {
-			defer func() {
-				<-limiter
-				wg.Done()
-			}()
-
-			if ExecCommandPing(host) {
-				livewg.Add(1)
-				chanHosts <- host
+		_runICMP(iplist, chan_live_result, con4, con6)
+		for _, ip := range iplist {
+			if _, ok := _ExistIP[ip.String()]; !ok {
+				chan_may_not_live <- ip
 			}
-		}(host)
-	}
-
-	wg.Wait()
-}
-
-// ExecCommandPing 执行系统Ping命令检测主机存活
-func ExecCommandPing(ip string) bool {
-	// 过滤黑名单字符
-	forbiddenChars := []string{";", "&", "|", "`", "$", "\\", "'", "%", "\"", "\n"}
-	for _, char := range forbiddenChars {
-		if strings.Contains(ip, char) {
-			return false
 		}
-	}
-
-	var command *exec.Cmd
-	// 根据操作系统选择不同的ping命令
-	switch runtime.GOOS {
-	case "windows":
-		command = exec.Command("cmd", "/c", "ping -n 1 -w 1 "+ip+" && echo true || echo false")
-	case "darwin":
-		command = exec.Command("/bin/bash", "-c", "ping -c 1 -W 1 "+ip+" && echo true || echo false")
-	default: // linux
-		command = exec.Command("/bin/bash", "-c", "ping -c 1 -w 1 "+ip+" && echo true || echo false")
-	}
-
-	// 捕获命令输出
-	var outinfo bytes.Buffer
-	command.Stdout = &outinfo
-
-	// 执行命令
-	if err := command.Start(); err != nil {
-		return false
-	}
-
-	if err := command.Wait(); err != nil {
-		return false
-	}
-
-	// 分析输出结果
-	output := outinfo.String()
-	return strings.Contains(output, "true") && strings.Count(output, ip) > 2
-}
-
-// makemsg 构造ICMP echo请求消息
-func makemsg(host string) []byte {
-	msg := make([]byte, 40)
-
-	// 获取标识符
-	id0, id1 := genIdentifier(host)
-
-	// 设置ICMP头部
-	msg[0] = 8                      // Type: Echo Request
-	msg[1] = 0                      // Code: 0
-	msg[2] = 0                      // Checksum高位(待计算)
-	msg[3] = 0                      // Checksum低位(待计算)
-	msg[4], msg[5] = id0, id1       // Identifier
-	msg[6], msg[7] = genSequence(1) // Sequence Number
-
-	// 计算校验和
-	check := checkSum(msg[0:40])
-	msg[2] = byte(check >> 8)  // 设置校验和高位
-	msg[3] = byte(check & 255) // 设置校验和低位
-
-	return msg
-}
-
-// checkSum 计算ICMP校验和
-func checkSum(msg []byte) uint16 {
-	sum := 0
-	length := len(msg)
-
-	// 按16位累加
-	for i := 0; i < length-1; i += 2 {
-		sum += int(msg[i])*256 + int(msg[i+1])
-	}
-
-	// 处理奇数长度情况
-	if length%2 == 1 {
-		sum += int(msg[length-1]) * 256
-	}
-
-	// 将高16位加到低16位
-	sum = (sum >> 16) + (sum & 0xffff)
-	sum = sum + (sum >> 16)
-
-	// 取反得到校验和
-	return uint16(^sum)
-}
-
-// genSequence 生成ICMP序列号
-func genSequence(v int16) (byte, byte) {
-	ret1 := byte(v >> 8)  // 高8位
-	ret2 := byte(v & 255) // 低8位
-	return ret1, ret2
-}
-
-// genIdentifier 根据主机地址生成标识符
-func genIdentifier(host string) (byte, byte) {
-	return host[0], host[1] // 使用主机地址前两个字节
-}
-
-// ArrayCountValueTop 统计IP地址段存活数量并返回TOP N结果
-func ArrayCountValueTop(arrInit []string, length int, flag bool) (arrTop []string, arrLen []int) {
-	if len(arrInit) == 0 {
 		return
 	}
+	Common.LogError("icmp扫描失败,使用ping扫描")
+	RunPing(iplist, chan_live_result, chan_may_not_live)
+}
 
-	// 统计各网段出现次数
-	segmentCounts := make(map[string]int)
-	for _, ip := range arrInit {
-		segments := strings.Split(ip, ".")
-		if len(segments) != 4 {
-			continue
-		}
-
-		// 根据flag确定统计B段还是C段
-		var segment string
-		if flag {
-			segment = fmt.Sprintf("%s.%s", segments[0], segments[1]) // B段
-		} else {
-			segment = fmt.Sprintf("%s.%s.%s", segments[0], segments[1], segments[2]) // C段
-		}
-
-		segmentCounts[segment]++
+func switchIP(ip net.IP) (net.Addr, int) {
+	if ip.To4() == nil {
+		return &net.IPAddr{IP: ip}, ProtocolICMPv6
 	}
+	return &net.IPAddr{IP: ip}, ProtocolICMPv4
+}
 
-	// 创建副本用于排序
-	sortMap := make(map[string]int)
-	for k, v := range segmentCounts {
-		sortMap[k] = v
+func buildICMPPacket(proto int) *icmp.Message {
+	switch proto {
+	case ProtocolICMPv4:
+		return &icmp.Message{
+			Type: ipv4.ICMPTypeEcho,
+			Code: 0,
+			Body: &icmp.Echo{
+				ID:   os.Getpid() & 0xffff,
+				Seq:  1,
+				Data: []byte("SCAN_PROBE"),
+			},
+		}
+	case ProtocolICMPv6:
+		return &icmp.Message{
+			Type: ipv6.ICMPTypeEchoRequest,
+			Code: 0,
+			Body: &icmp.Echo{
+				ID:   os.Getpid() & 0xffff,
+				Seq:  1,
+				Data: []byte("SCAN_PROBE"),
+			},
+		}
 	}
+	return nil
+}
 
-	// 获取TOP N结果
-	for i := 0; i < length && len(sortMap) > 0; i++ {
-		maxSegment := ""
-		maxCount := 0
+func _runICMP(iplist []net.IP, chan_live_result chan net.IP, con4, con6 *icmp.PacketConn) {
+	defer con4.Close()
+	defer con6.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	go processResponse(ctx, con4, ProtocolICMPv4, chan_live_result)
+	go processResponse(ctx, con6, ProtocolICMPv6, chan_live_result)
 
-		// 查找当前最大值
-		for segment, count := range sortMap {
-			if count > maxCount {
-				maxCount = count
-				maxSegment = segment
+	sem := make(chan struct{}, MaxParallel)
+	for _, ip := range iplist {
+		sem <- struct{}{}
+		go func(ip net.IP) {
+			defer func() { <-sem }()
+			addr, proto := switchIP(ip)
+			pkt := buildICMPPacket(proto)
+			wb, _ := pkt.Marshal(nil)
+			if proto == ProtocolICMPv4 {
+				con4.WriteTo(wb, addr)
+			} else {
+				con6.WriteTo(wb, addr)
+			}
+		}(ip)
+	}
+	timer := time.NewTimer(Timeout * 3)
+	<-timer.C
+	cancel()
+}
+
+const (
+	ProtocolICMPv4 = 1
+	ProtocolICMPv6 = 58
+	Timeout        = 3 * time.Second
+	MaxParallel    = 100 // 并发控制
+)
+
+func processResponse(ctx context.Context, conn *icmp.PacketConn, proto int, chan_live_result chan net.IP) {
+	for {
+		select {
+		case <-ctx.Done():
+			Common.LogDebug("processResponse exit")
+			return
+		default:
+			buf := make([]byte, 1500)
+			conn.SetReadDeadline(time.Now().Add(Timeout))
+			n, addr, err := conn.ReadFrom(buf)
+			if err != nil {
+				continue
+			}
+			msg, err := icmp.ParseMessage(proto, buf[:n])
+			if err != nil || msg.Type != responseType(proto) {
+				continue
+			}
+			ip := net.IP(addr.String())
+			if isExistIP(ip) {
+				chan_live_result <- ip
 			}
 		}
-
-		// 添加到结果集
-		arrTop = append(arrTop, maxSegment)
-		arrLen = append(arrLen, maxCount)
-
-		// 从待处理map中删除已处理项
-		delete(sortMap, maxSegment)
 	}
+}
 
-	return
+func responseType(proto int) icmp.Type {
+	if proto == ProtocolICMPv4 {
+		return ipv4.ICMPTypeEchoReply
+	}
+	return ipv6.ICMPTypeEchoReply
+}
+
+func initListeners() (*icmp.PacketConn, *icmp.PacketConn, error) {
+	conn4, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	if err != nil {
+		Common.LogError("IPV4 listener error: %v\n", err.Error())
+		return nil, nil, err
+	}
+	conn6, err := icmp.ListenPacket("ip6:ipv6-icmp", "::")
+	if err != nil {
+		Common.LogError("IPv6 listener error: %v\n ", err.Error())
+		defer conn4.Close()
+		return nil, nil, err
+	}
+	return conn4, conn6, nil
 }

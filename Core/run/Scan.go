@@ -2,7 +2,6 @@ package run
 
 import (
 	"escan/Common"
-
 	"fmt"
 	"net"
 	"sync"
@@ -19,7 +18,6 @@ func Scan(info *Common.HostInfoList) {
 	Common.LogInfo("开始信息扫描")
 
 	selectScanMode(info)
-
 }
 
 func selectScanMode(info *Common.HostInfoList) {
@@ -29,11 +27,10 @@ func selectScanMode(info *Common.HostInfoList) {
 	default:
 		executeHostScan(info)
 	}
-
 }
 
 func executeHostScan(info *Common.HostInfoList) {
-	if info.IPs == nil || len(info.IPs) == 0 {
+	if len(info.IPs) == 0 {
 		Common.LogError("未指定扫描目标")
 		return
 	}
@@ -76,15 +73,14 @@ func RunPortScan(chan_livehost chan net.IP, info *Common.HostInfoList, timeout i
 	var workerWg sync.WaitGroup
 	var wg sync.WaitGroup
 
-	var chan_addr = make(chan Addr, __PORT_SCAN_RESULT_LEN)
-	for i := 0; i < Common.Args.ThreadsNum; i++ {
+	chan_addr := make(chan Addr, __PORT_SCAN_RESULT_LEN)
+	for range Common.Args.ThreadsNum {
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
 			for addr := range chan_addr {
 				PortConnect(addr, chan_portScan_result, timeout, &wg)
 			}
-
 		}()
 	}
 
@@ -92,7 +88,7 @@ func RunPortScan(chan_livehost chan net.IP, info *Common.HostInfoList, timeout i
 	for ip := range chan_livehost {
 		Common.LogSuccess("目标 %s 存活", ip.String())
 		_wg.Add(1)
-		go func(ip net.IP) { //多线程派发任务防止同ip的任务连续执行
+		go func(ip net.IP) { // 多线程派发任务防止同ip的任务连续执行
 
 			for _, _port := range info.Ports {
 				wg.Add(1)
@@ -109,7 +105,7 @@ func RunPortScan(chan_livehost chan net.IP, info *Common.HostInfoList, timeout i
 	workerWg.Wait()
 	close(chan_portScan_result)
 	wg.Wait()
-	//通过入参chan_portScan_result返回结果
+	// 通过入参chan_portScan_result返回结果
 }
 
 // func PortConnect(addr Addr, chan_portScan_result chan portScanResult, timeout int, wg *sync.WaitGroup) {
@@ -123,7 +119,7 @@ func RunPortScan(chan_livehost chan net.IP, info *Common.HostInfoList, timeout i
 // }
 
 func PortConnect(addr Addr, results chan<- portScanResult, timeout int64, wg *sync.WaitGroup) {
-	//TODO
+	// TODO
 	defer wg.Done()
 
 	var isOpen bool
@@ -153,17 +149,13 @@ func PortConnect(addr Addr, results chan<- portScanResult, timeout int64, wg *sy
 		Type:   Common.PORT,
 		Target: addr.ip.String(),
 		Status: "open",
-		Details: map[string]interface{}{
+		Details: map[string]any{
 			"port": addr.port,
 		},
 	}
 	Common.SaveResult(portResult)
 
 	// 构造扫描结果
-	result := portScanResult{
-		ip:   addr.ip,
-		port: addr.port,
-	}
+	result := portScanResult(addr)
 	results <- result
-
 }

@@ -37,22 +37,22 @@ const (
 
 // ScanResult 扫描结果结构
 type ScanResult struct {
-	Time    time.Time              `json:"time"`    // 发现时间
-	Type    ResultType             `json:"type"`    // 结果类型
-	Target  string                 `json:"target"`  // 目标(IP/域名/URL)
-	Status  string                 `json:"status"`  // 状态描述
-	Details map[string]interface{} `json:"details"` // 详细信息
+	Time    time.Time      `json:"time"`    // 发现时间
+	Type    ResultType     `json:"type"`    // 结果类型
+	Target  string         `json:"target"`  // 目标(IP/域名/URL)
+	Status  string         `json:"status"`  // 状态描述
+	Details map[string]any `json:"details"` // 详细信息
 }
 
 func InitOutput() error {
 	LogDebug("InitOutput_start")
 	switch OutputFormat {
 	case "json", "txt", "csv":
-		//有效格式
+		// 有效格式
 
 	default:
 		LogError("Invalid OutputFormat: %s", OutputFormat)
-		return fmt.Errorf("Invalid OutputFormat: %s", OutputFormat)
+		return fmt.Errorf("invalid OutputFormat: %s", OutputFormat)
 	}
 	if OutputFilePath == "" {
 		LogError("OutputFilePath is empty")
@@ -76,7 +76,6 @@ func InitOutput() error {
 	LogDebug("InitOutput_end")
 
 	return nil
-
 }
 
 func (manager *OutputManager) initialize() error {
@@ -85,11 +84,11 @@ func (manager *OutputManager) initialize() error {
 	if manager.isInitialized {
 		return nil
 	}
-	LogDebug("output_openning_file: " + manager.outputPath)
+	LogDebug("output_openning_file: %s ", manager.outputPath)
 	file, err := os.OpenFile(manager.outputPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		LogError("output_openning_file_failed: " + err.Error())
-		return fmt.Errorf("output_openning_file_failed: " + err.Error())
+		LogError("output_openning_file_failed: %s", err.Error())
+		return fmt.Errorf("output_openning_file_failed: %s", err.Error())
 	}
 	manager.file = file
 	switch manager.outputFormat {
@@ -97,19 +96,19 @@ func (manager *OutputManager) initialize() error {
 		manager.csvWriter = csv.NewWriter(file)
 		headers := []string{"Time", "Type", "Target", "Status", "Details"}
 		if err := manager.csvWriter.Write(headers); err != nil {
-			LogError("output_csv_write_header_failed: " + err.Error())
+			LogError("output_csv_write_header_failed: %s", err.Error())
 			file.Close()
-			return fmt.Errorf("output_csv_write_header_failed: " + err.Error())
+			return fmt.Errorf("output_csv_write_header_failed: %s", err.Error())
 		}
 		manager.csvWriter.Flush()
 	case "txt":
-		//TODO: txt output
+		// TODO: txt output
 	case "json":
 		LogDebug("output_json_encoder_init")
 		manager.jsonEncoder = json.NewEncoder(file)
 		manager.jsonEncoder.SetIndent("", "  ")
 	default:
-		LogError("Invalid OutputFormat: " + manager.outputFormat)
+		LogError("Invalid OutputFormat: %s", manager.outputFormat)
 		file.Close()
 	}
 	manager.isInitialized = true
@@ -124,8 +123,9 @@ func SaveResult(result *ScanResult) error {
 	}
 	// LogDebug("output_save_result:type=%s,target=%s", result.Type, result.Target)
 	return ResultOutput.saveResult(result)
-	//TODO: save result to file or database
+	// TODO: save result to file or database
 }
+
 func (manager *OutputManager) saveResult(result *ScanResult) error {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
@@ -142,8 +142,8 @@ func (manager *OutputManager) saveResult(result *ScanResult) error {
 	case "json":
 		err = manager.writeJson(result)
 	default:
-		err = fmt.Errorf("Invalid OutputFormat: %s", manager.outputFormat)
-		return fmt.Errorf("Invalid OutputFormat: %s", manager.outputFormat)
+		//	err = fmt.Errorf("invalidalid OutputFormat: %s", manager.outputFormat)
+		return fmt.Errorf("invalid OutputFormat: %s", manager.outputFormat)
 	}
 	if err != nil {
 		LogDebug("output_save_result_failed: %s", err.Error())

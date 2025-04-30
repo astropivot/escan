@@ -17,12 +17,13 @@ func Parseinfo(info *HostInfoList) {
 	readToInfoHosts(info)
 	readToInfoPort(info)
 }
+
 func readToInfoHosts(info *HostInfoList) {
 	tmpHosts := make(map[string]struct{})
 	if Args.Hosts != "" {
 		if strings.Contains(Args.Hosts, ",") {
-			IPlists := strings.Split(Args.Hosts, ",")
-			for _, IP := range IPlists {
+			IPlists := strings.SplitSeq(Args.Hosts, ",")
+			for IP := range IPlists {
 				if IP != "" {
 					ip := ParseHost(IP)
 					for _, i := range ip {
@@ -62,14 +63,14 @@ func readToInfoHosts(info *HostInfoList) {
 			}
 		}
 	}
-
 }
+
 func readToInfoPort(info *HostInfoList) {
 	tmpPorts := make(map[int]struct{})
 	if Args.Ports != "" {
 		if strings.Contains(Args.Ports, ",") {
-			_Ports := strings.Split(Args.Ports, ",")
-			for _, _Port := range _Ports {
+			_Ports := strings.SplitSeq(Args.Ports, ",")
+			for _Port := range _Ports {
 				ports := ParsePort(_Port)
 				for _, _port := range ports {
 					if _, ok := tmpPorts[_port]; !ok {
@@ -98,13 +99,8 @@ func readToInfoPort(info *HostInfoList) {
 			}
 		}
 	}
-	if info.Ports == nil || len(info.Ports) == 0 {
+	if len(info.Ports) == 0 {
 		info.Ports = []int{20, 21, 22, 23, 80, 81, 110, 135, 139, 143, 389, 443, 445, 502, 873, 993, 995, 1433, 1521, 3306, 5432, 5672, 6379, 7001, 7687, 8000, 8005, 8009, 8080, 8089, 8443, 9000, 9042, 9092, 9200, 10051, 11211, 15672, 27017, 61616}
-	}
-	if len(tmpPorts) == 0 && Args.Ports == "" && Args.PortFile == "" {
-		for i := 1; i < 1000; i++ {
-			info.Ports = append(info.Ports, i)
-		}
 	}
 }
 
@@ -132,7 +128,6 @@ func readfile(filename string) ([]string, error) {
 	}
 	LogInfo("读取文件:%s,行数:%d", filename, lineCount)
 	return content, nil
-
 }
 
 func ParsePort(ports string) []int {
@@ -179,7 +174,6 @@ func ParsePort(ports string) []int {
 		return nil
 	}
 	return []int{port}
-
 }
 
 func ParseHost(host string) []string {
@@ -216,7 +210,7 @@ func IPRange(c *net.IPNet) []string {
 	bcst := make(net.IP, len(c.IP))
 	copy(bcst, c.IP)
 
-	for i := 0; i < len(mask); i++ {
+	for i := range mask {
 		ipIdx := len(bcst) - i - 1
 		bcst[ipIdx] = c.IP[ipIdx] | ^mask[len(mask)-i-1]
 	}
@@ -228,7 +222,7 @@ func IPRange(c *net.IPNet) []string {
 		return nil
 	}
 	from, to := [4]int{}, [4]int{}
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		ip1, err1 := strconv.Atoi(splitip1[i])
 		ip2, err2 := strconv.Atoi(splitip2[i])
 		if err1 != nil || err2 != nil {

@@ -4,6 +4,7 @@ import (
 	"escan/Common"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 )
@@ -38,22 +39,22 @@ func executeHostScan(info *Common.HostInfoList) {
 	Common.LogInfo("开始主机扫描")
 
 	chan_livehost := CheckLive(info)
-	// for i := range chan_livehost {
-	// 	fmt.Println(i)
-	// }
-	chan_portScan_Result := getAlivePorts(chan_livehost, info)
-	for i := range chan_portScan_Result {
-		// fmt.Println(i.ip.String(), i.port, "live")
-		_ = i
+	for i := range chan_livehost {
+		fmt.Println(i)
 	}
+	// chan_portScan_Result := getAlivePorts(chan_livehost, info)
+	// for i := range chan_portScan_Result {
+	// 	// fmt.Println(i.ip.String(), i.port, "live")
+	// 	_ = i
+	// }
 	fmt.Println("end")
 }
 
 const __PORT_SCAN_RESULT_LEN = 65536 * 4
 
-func getAlivePorts(chan_livehost chan net.IP, info *Common.HostInfoList) chan portScanResult {
+func getAlivePorts(chan_livehost chan netip.Addr, info *Common.HostInfoList) chan netip.AddrPort {
 	Common.LogInfo("开始端口扫描")
-	chan_port_result := make(chan portScanResult, __PORT_SCAN_RESULT_LEN)
+	chan_port_result := make(chan netip.AddrPort, __PORT_SCAN_RESULT_LEN)
 	go RunPortScan(chan_livehost, info, Common.Args.Timeout_portScan, chan_port_result)
 	return chan_port_result
 }
@@ -69,11 +70,12 @@ type Addr struct {
 }
 
 // 通过入参chan_livehost和info，启动多线程扫描端口，并将结果通过chan_portScan_result返回
-func RunPortScan(chan_livehost chan net.IP, info *Common.HostInfoList, timeout int64, chan_portScan_result chan portScanResult) {
+func RunPortScan(chan_livehost chan netip.Addr, info *Common.HostInfoList, timeout int64, chan_portScan_result chan netip.AddrPort) {
 	var workerWg sync.WaitGroup
 	var wg sync.WaitGroup
 
-	chan_addr := make(chan Addr, __PORT_SCAN_RESULT_LEN)
+	chan_addr := make(chan netip.AddrPort, __PORT_SCAN_RESULT_LEN)
+
 	for range Common.Args.ThreadsNum {
 		workerWg.Add(1)
 		go func() {
@@ -88,13 +90,14 @@ func RunPortScan(chan_livehost chan net.IP, info *Common.HostInfoList, timeout i
 	for ip := range chan_livehost {
 		Common.LogSuccess("目标 %s 存活", ip.String())
 		_wg.Add(1)
-		go func(ip net.IP) { // 多线程派发任务防止同ip的任务连续执行
+
+		go func(ip netip.Addr) { // 多线程派发任务防止同ip的任务连续执行
 
 			for _, _port := range info.Ports {
 				wg.Add(1)
 				time.Sleep(10 * time.Millisecond)
 				// Common.LogDebug("开始扫描 %s:%d", ip.String(), _port)
-				chan_addr <- Addr{ip, _port}
+				chan_addr <- netip.AddrPortFrom(ip, uint16(_port))
 			}
 			_wg.Done()
 		}(ip)
@@ -118,7 +121,7 @@ func RunPortScan(chan_livehost chan net.IP, info *Common.HostInfoList, timeout i
 
 // }
 
-func PortConnect(addr Addr, results chan<- portScanResult, timeout int64, wg *sync.WaitGroup) {
+func PortConnect(addr netip.AddrPort, results chan<- netip.AddrPort, timeout int64, wg *sync.WaitGroup) {
 	// TODO
 	defer wg.Done()
 
@@ -128,7 +131,7 @@ func PortConnect(addr Addr, results chan<- portScanResult, timeout int64, wg *sy
 
 	// 尝试建立TCP连接
 	conn, err = Common.WrapperTcpWithTimeout("tcp4",
-		fmt.Sprintf("%s:%v", addr.ip, addr.port),
+		fmt.Sprintf("%s:%v", net.IP(addr.Addr().AsSlice()), addr.Port()),
 		time.Duration(timeout)*time.Second)
 	if err == nil {
 		defer conn.Close()
@@ -140,22 +143,22 @@ func PortConnect(addr Addr, results chan<- portScanResult, timeout int64, wg *sy
 	}
 
 	// 记录开放端口
-	address := fmt.Sprintf("%s:%d", addr.ip, addr.port)
+	address := fmt.Sprintf("%s:%d", net.IP(addr.Addr().AsSlice()), addr.Port())
 	Common.LogSuccess("端口开放 %s", address)
 
 	// 保存端口扫描结果
 	portResult := &Common.ScanResult{
 		Time:   time.Now(),
 		Type:   Common.PORT,
-		Target: addr.ip.String(),
+		Target: addr.Addr().String(),
 		Status: "open",
 		Details: map[string]any{
-			"port": addr.port,
+			"port": addr.Port(),
 		},
 	}
 	Common.SaveResult(portResult)
 
 	// 构造扫描结果
-	result := portScanResult(addr)
-	results <- result
+
+	results <- addr
 }

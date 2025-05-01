@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"escan/Common"
 	"net"
+	"net/netip"
 	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/malfunkt/arpfox/arp"
 )
 
 const (
@@ -18,19 +17,17 @@ const (
 	__MAYBE_NOT_LIVE_HOST_LEN = 512
 )
 
-func CheckLive(info *Common.HostInfoList) chan net.IP {
-	chan_livehost := make(chan net.IP, __LIVE_HOST_LEN)
-	chan_may_not_livehost := make(chan net.IP, __MAYBE_NOT_LIVE_HOST_LEN)
+func CheckLive(info *Common.HostInfoList) chan netip.Addr {
+	chan_livehost := make(chan netip.Addr, __LIVE_HOST_LEN)
+	chan_may_not_livehost := make(chan netip.Addr, __MAYBE_NOT_LIVE_HOST_LEN)
 
 	if Common.Args.IsPing {
 		Common.LogInfo("开始ping扫描")
 		go RunPing(info.IPs, chan_livehost, chan_may_not_livehost)
-		Common.LogInfo("开始arp扫描")
 		go RunArpScan(chan_livehost, chan_may_not_livehost)
 	} else {
 		Common.LogInfo("开始ICMP扫描")
 		go RunICMP(info.IPs, chan_livehost, chan_may_not_livehost)
-		Common.LogInfo("开始arp扫描")
 		go RunArpScan(chan_livehost, chan_may_not_livehost)
 	}
 
@@ -38,34 +35,39 @@ func CheckLive(info *Common.HostInfoList) chan net.IP {
 	return chan_livehost
 }
 
-func RunArpScan(chan_livehost chan net.IP, chan_may_not_livehost chan net.IP) {
-	// todo
+func RunArpScan(chan_livehost chan netip.Addr, chan_may_not_livehost chan netip.Addr) {
+	Common.LogInfo("开始arp扫描")
+
 	for ip := range chan_may_not_livehost {
 		if _do_arp_scan(ip) {
-			Common.LogDebug("arp扫描成功:%s", ip.String())
+			// Common.LogDebug("arp扫描成功:%s", ip.String())
 			chan_livehost <- ip
 		}
+		// Common.LogDebug("arp扫描失败:%s", ip.String())
 	}
 	close(chan_livehost)
+	Common.LogInfo("arp扫描结束")
 }
 
-func _do_arp_scan(ip net.IP) bool {
-	_, err := arp.Lookup(ip)
-	return err == nil
+func _do_arp_scan(ip netip.Addr) bool {
+	//_, err := arp.Lookup(net.IP(ip.AsSlice()))
+	//return err == nil
+	return false
 }
 
 func PingIcmpEchoRequest(ip net.IP) bool {
 	return false
 }
 
-func RunPing(iplist []net.IP, chan_livehost chan net.IP, chan_may_not_livehost chan net.IP) {
+func RunPing(iplist []netip.Addr, chan_livehost chan netip.Addr, chan_may_not_livehost chan netip.Addr) {
 	var wg sync.WaitGroup
 	limiter := make(chan struct{}, Common.Args.ThreadPingNum)
 	for _, host := range iplist {
 		wg.Add(1)
 		limiter <- struct{}{}
 		time.Sleep(time.Microsecond * 10) // 防止频繁ping导致cpu占用过高
-		go func(host net.IP) {
+
+		go func(host netip.Addr) {
 			defer func() {
 				wg.Done()
 				<-limiter

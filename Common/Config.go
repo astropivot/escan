@@ -3,6 +3,7 @@ package Common
 import (
 	"flag"
 	"net"
+	"net/netip"
 	"sync"
 )
 
@@ -23,7 +24,7 @@ var OutputMutex sync.Mutex
 //
 // )
 type HostInfoList struct {
-	IPs   []net.IP
+	IPs   []netip.Addr
 	Ports []int
 	Urls  string
 }

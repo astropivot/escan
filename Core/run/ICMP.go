@@ -8,43 +8,51 @@ import (
 	"sync"
 	"time"
 
+	"net/netip"
+
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
 
 var (
-	_ExistIP     = make(map[string]struct{})
+	_ExistIP     = make(map[netip.Addr]struct{})
 	_lockExistIP = sync.Mutex{}
 )
 
-func isExistIP(ip net.IP) bool {
+func isExistIPwithAdd(ip netip.Addr) bool {
 	_lockExistIP.Lock()
 	defer _lockExistIP.Unlock()
-	_, ok := _ExistIP[ip.String()]
+	_, ok := _ExistIP[ip]
+	if !ok {
+		_ExistIP[ip] = struct{}{}
+	}
 	return ok
 }
 
-func RunICMP(iplist []net.IP, chan_live_result chan net.IP, chan_may_not_live chan net.IP) {
+func RunICMP(iplist []netip.Addr, chan_live_result chan netip.Addr, chan_may_not_live chan netip.Addr) {
 	con4, con6, err := initListeners()
-	if err != nil {
+	if err == nil {
 		_runICMP(iplist, chan_live_result, con4, con6)
 		for _, ip := range iplist {
-			if _, ok := _ExistIP[ip.String()]; !ok {
+			if _, ok := _ExistIP[ip]; !ok {
 				chan_may_not_live <- ip
 			}
 		}
+		close(chan_may_not_live)
+		Common.LogDebug("icmp扫描完成")
 		return
 	}
+	Common.LogDebug("initListeners 失败: %s", err.Error())
 	Common.LogError("icmp扫描失败,使用ping扫描")
 	RunPing(iplist, chan_live_result, chan_may_not_live)
 }
 
-func switchIP(ip net.IP) (net.Addr, int) {
-	if ip.To4() == nil {
-		return &net.IPAddr{IP: ip}, ProtocolICMPv6
+func switchIP(ip netip.Addr) (net.Addr, int) {
+	if ip.Is6() {
+		return &net.IPAddr{IP: net.IP(ip.AsSlice())}, ProtocolICMPv6
 	}
-	return &net.IPAddr{IP: ip}, ProtocolICMPv4
+	return &net.IPAddr{IP: net.IP(ip.AsSlice())}, ProtocolICMPv4
 }
 
 func buildICMPPacket(proto int) *icmp.Message {
@@ -73,18 +81,17 @@ func buildICMPPacket(proto int) *icmp.Message {
 	return nil
 }
 
-func _runICMP(iplist []net.IP, chan_live_result chan net.IP, con4, con6 *icmp.PacketConn) {
-	defer con4.Close()
-	defer con6.Close()
+func _runICMP(iplist []netip.Addr, chan_live_result chan netip.Addr, con4, con6 *icmp.PacketConn) {
 	ctx, cancel := context.WithCancel(context.Background())
-	go processResponse(ctx, con4, ProtocolICMPv4, chan_live_result)
-	go processResponse(ctx, con6, ProtocolICMPv6, chan_live_result)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go processResponse(ctx, &wg, con4, ProtocolICMPv4, chan_live_result)
+	// go processResponse(ctx, &wg, con6, ProtocolICMPv6, chan_live_result)
 
 	sem := make(chan struct{}, MaxParallel)
 	for _, ip := range iplist {
 		sem <- struct{}{}
-		go func(ip net.IP) {
-			defer func() { <-sem }()
+		go func(ip netip.Addr) {
 			addr, proto := switchIP(ip)
 			pkt := buildICMPPacket(proto)
 			wb, _ := pkt.Marshal(nil)
@@ -93,11 +100,17 @@ func _runICMP(iplist []net.IP, chan_live_result chan net.IP, con4, con6 *icmp.Pa
 			} else {
 				con6.WriteTo(wb, addr)
 			}
+			// Common.LogDebug("send icmp packet to %s", ip.String())
+			<-sem
 		}(ip)
+		// time.Sleep(10 * time.Millisecond)
+
 	}
-	timer := time.NewTimer(Timeout * 3)
+	Common.LogDebug("wait for icmp response")
+	timer := time.NewTimer(Timeout)
 	<-timer.C
 	cancel()
+	wg.Wait()
 }
 
 const (
@@ -107,25 +120,28 @@ const (
 	MaxParallel    = 100 // 并发控制
 )
 
-func processResponse(ctx context.Context, conn *icmp.PacketConn, proto int, chan_live_result chan net.IP) {
+func processResponse(ctx context.Context, wg *sync.WaitGroup, conn *icmp.PacketConn, proto int, chan_live_result chan netip.Addr) {
+	defer conn.Close()
 	for {
 		select {
 		case <-ctx.Done():
+			wg.Done()
 			Common.LogDebug("processResponse exit")
 			return
 		default:
-			buf := make([]byte, 1500)
+			buf := make([]byte, 100)
 			conn.SetReadDeadline(time.Now().Add(Timeout))
-			n, addr, err := conn.ReadFrom(buf)
+			_, addr, err := conn.ReadFrom(buf)
 			if err != nil {
+				Common.LogDebug("err: %s", err.Error())
 				continue
 			}
-			msg, err := icmp.ParseMessage(proto, buf[:n])
-			if err != nil || msg.Type != responseType(proto) {
+			ip, err := netip.ParseAddr(addr.String())
+			if err != nil {
+				Common.LogDebug("err: %s", err.Error())
 				continue
 			}
-			ip := net.IP(addr.String())
-			if isExistIP(ip) {
+			if !isExistIPwithAdd(ip) {
 				chan_live_result <- ip
 			}
 		}

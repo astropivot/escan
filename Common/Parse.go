@@ -3,6 +3,7 @@ package Common
 import (
 	"bufio"
 	"net"
+	"net/netip"
 	"os"
 	"regexp"
 	"strconv"
@@ -19,27 +20,41 @@ func Parseinfo(info *HostInfoList) {
 }
 
 func readToInfoHosts(info *HostInfoList) {
-	tmpHosts := make(map[string]struct{})
+	tmpHosts := make(map[netip.Addr]struct{})
+	defer func() {
+		info.IPs = make([]netip.Addr, len(tmpHosts))
+		i := 0
+		for ip := range tmpHosts {
+			info.IPs[i] = ip
+			i++
+		}
+	}()
 	if Args.Hosts != "" {
 		if strings.Contains(Args.Hosts, ",") {
 			IPlists := strings.SplitSeq(Args.Hosts, ",")
 			for IP := range IPlists {
 				if IP != "" {
-					ip := ParseHost(IP)
-					for _, i := range ip {
-						if _, ok := tmpHosts[i]; !ok {
-							tmpHosts[i] = struct{}{}
-							info.IPs = append(info.IPs, net.ParseIP(i))
+					ips := ParseHost(IP)
+					for _, i := range ips {
+						ip, err := netip.ParseAddr(i)
+						if err != nil {
+							continue
+						}
+						if _, ok := tmpHosts[ip]; !ok {
+							tmpHosts[ip] = struct{}{}
 						}
 					}
 				}
 			}
 		} else {
-			ip := ParseHost(Args.Hosts)
-			for _, i := range ip {
-				if _, ok := tmpHosts[i]; !ok {
-					tmpHosts[i] = struct{}{}
-					info.IPs = append(info.IPs, net.ParseIP(i))
+			ips := ParseHost(Args.Hosts)
+			for _, i := range ips {
+				ip, err := netip.ParseAddr(i)
+				if err != nil {
+					continue
+				}
+				if _, ok := tmpHosts[ip]; !ok {
+					tmpHosts[ip] = struct{}{}
 				}
 			}
 		}
@@ -52,12 +67,14 @@ func readToInfoHosts(info *HostInfoList) {
 		}
 		for _, host := range hosts {
 			if host != "" {
-				ip := ParseHost(host)
-				for _, i := range ip {
-					if _, ok := tmpHosts[i]; !ok {
-						tmpHosts[i] = struct{}{}
-						info.IPs = append(info.IPs, net.ParseIP(i))
-
+				ips := ParseHost(host)
+				for _, i := range ips {
+					ip, err := netip.ParseAddr(i)
+					if err != nil {
+						continue
+					}
+					if _, ok := tmpHosts[ip]; !ok {
+						tmpHosts[ip] = struct{}{}
 					}
 				}
 			}
@@ -67,6 +84,18 @@ func readToInfoHosts(info *HostInfoList) {
 
 func readToInfoPort(info *HostInfoList) {
 	tmpPorts := make(map[int]struct{})
+	defer func() {
+		if len(tmpPorts) == 0 {
+			info.Ports = []int{20, 21, 22, 23, 80, 81, 110, 135, 139, 143, 389, 443, 445, 502, 873, 993, 995, 1433, 1521, 3306, 5432, 5672, 6379, 7001, 7687, 8000, 8005, 8009, 8080, 8089, 8443, 9000, 9042, 9092, 9200, 10051, 11211, 15672, 27017, 61616}
+		} else {
+			info.Ports = make([]int, len(tmpPorts))
+			i := 0
+			for port := range tmpPorts {
+				info.Ports[i] = port
+				i++
+			}
+		}
+	}()
 	if Args.Ports != "" {
 		if strings.Contains(Args.Ports, ",") {
 			_Ports := strings.SplitSeq(Args.Ports, ",")
@@ -75,7 +104,6 @@ func readToInfoPort(info *HostInfoList) {
 				for _, _port := range ports {
 					if _, ok := tmpPorts[_port]; !ok {
 						tmpPorts[_port] = struct{}{}
-						info.Ports = append(info.Ports, _port)
 					}
 				}
 			}
@@ -93,15 +121,12 @@ func readToInfoPort(info *HostInfoList) {
 				for _, i := range _port {
 					if _, ok := tmpPorts[i]; !ok {
 						tmpPorts[i] = struct{}{}
-						info.Ports = append(info.Ports, i)
 					}
 				}
 			}
 		}
 	}
-	if len(info.Ports) == 0 {
-		info.Ports = []int{20, 21, 22, 23, 80, 81, 110, 135, 139, 143, 389, 443, 445, 502, 873, 993, 995, 1433, 1521, 3306, 5432, 5672, 6379, 7001, 7687, 8000, 8005, 8009, 8080, 8089, 8443, 9000, 9042, 9092, 9200, 10051, 11211, 15672, 27017, 61616}
-	}
+
 }
 
 func readfile(filename string) ([]string, error) {

@@ -26,12 +26,12 @@ func CheckLive(info *Common.HostInfoList) chan netip.Addr {
 	if Common.Args.IsPing {
 		Common.LogInfo("开始ping扫描")
 		go RunPing(info.IPs, chan_livehost, chan_may_not_livehost)
-		Common.LogInfo("开始arp扫描")
+
 		go RunArpScan(chan_livehost, chan_may_not_livehost)
 	} else {
 		Common.LogInfo("开始ICMP扫描")
 		go RunICMP(info.IPs, chan_livehost, chan_may_not_livehost)
-		Common.LogInfo("开始arp扫描")
+
 		go RunArpScan(chan_livehost, chan_may_not_livehost)
 	}
 
@@ -40,14 +40,18 @@ func CheckLive(info *Common.HostInfoList) chan netip.Addr {
 }
 
 func RunArpScan(chan_livehost chan netip.Addr, chan_may_not_livehost chan netip.Addr) {
-	// todo
+	Common.LogInfo("开始arp扫描")
+
 	for ip := range chan_may_not_livehost {
 		if _do_arp_scan(ip) {
 			Common.LogDebug("arp扫描成功:%s", ip.String())
 			chan_livehost <- ip
 		}
+		Common.LogDebug("arp扫描失败:%s", ip.String())
 	}
 	close(chan_livehost)
+	Common.LogInfo("arp扫描结束")
+
 }
 
 func _do_arp_scan(ip netip.Addr) bool {

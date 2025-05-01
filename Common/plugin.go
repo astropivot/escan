@@ -1,5 +1,12 @@
 package Common
 
+type HostInfo struct {
+	Host    string
+	Ports   string
+	url     string
+	infostr []string
+}
+
 // ScanPlugin 定义扫描插件的结构
 type ScanPlugin struct {
 	Name     string                // 插件名称

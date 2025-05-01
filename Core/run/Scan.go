@@ -42,11 +42,11 @@ func executeHostScan(info *Common.HostInfoList) {
 	for i := range chan_livehost {
 		fmt.Println(i)
 	}
-	// chan_portScan_Result := getAlivePorts(chan_livehost, info)
-	// for i := range chan_portScan_Result {
-	// 	// fmt.Println(i.ip.String(), i.port, "live")
-	// 	_ = i
-	// }
+	chan_portScan_Result := getAlivePorts(chan_livehost, info)
+	for i := range chan_portScan_Result {
+		// fmt.Println(i.ip.String(), i.port, "live")
+		_ = i
+	}
 	fmt.Println("end")
 }
 

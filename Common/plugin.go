@@ -4,7 +4,7 @@ package Common
 type ScanPlugin struct {
 	Name     string                // 插件名称
 	Ports    []int                 // 关联的端口列表，空切片表示特殊扫描类型
-	ScanFunc func(*Hostinfo) error // 扫描函数
+	ScanFunc func(*HostInfo) error // 扫描函数
 }
 
 func (p *ScanPlugin) HasPort(port int) bool {

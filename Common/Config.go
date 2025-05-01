@@ -2,7 +2,6 @@ package Common
 
 import (
 	"flag"
-	"net"
 	"net/netip"
 	"sync"
 )
@@ -29,9 +28,9 @@ type HostInfoList struct {
 	Urls  string
 }
 
-type Hostinfo struct {
-	Ip      net.IP
-	port    int
+type HostInfo struct {
+	Host    string
+	Ports   string
 	url     string
 	infostr []string
 }

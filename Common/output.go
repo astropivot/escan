@@ -44,6 +44,19 @@ type ScanResult struct {
 	Details map[string]any `json:"details"` // 详细信息
 }
 
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true // 文件存在
+	}
+	if os.IsNotExist(err) {
+		return false // 文件不存在
+	}
+	return false // 其他错误（如权限不足），默认视为不存在
+}
+
+var _existfile = false
+
 func InitOutput() error {
 	LogDebug("InitOutput_start")
 	switch OutputFormat {
@@ -59,6 +72,7 @@ func InitOutput() error {
 		return fmt.Errorf("OutputFilePath is empty")
 	}
 	dir := filepath.Dir(OutputFilePath)
+	_existfile = fileExists(OutputFilePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		LogError("MkdirAll failed: %s", err.Error())
 		return fmt.Errorf("MkdirAll failed: %s", err.Error())
@@ -94,11 +108,13 @@ func (manager *OutputManager) initialize() error {
 	switch manager.outputFormat {
 	case "csv":
 		manager.csvWriter = csv.NewWriter(file)
-		headers := []string{"Time", "Type", "Target", "Status", "Details"}
-		if err := manager.csvWriter.Write(headers); err != nil {
-			LogError("output_csv_write_header_failed: %s", err.Error())
-			file.Close()
-			return fmt.Errorf("output_csv_write_header_failed: %s", err.Error())
+		if !_existfile {
+			headers := []string{"Time", "Type", "Target", "Status", "Details"}
+			if err := manager.csvWriter.Write(headers); err != nil {
+				LogError("output_csv_write_header_failed: %s", err.Error())
+				file.Close()
+				return fmt.Errorf("output_csv_write_header_failed: %s", err.Error())
+			}
 		}
 		manager.csvWriter.Flush()
 	case "txt":

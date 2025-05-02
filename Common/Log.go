@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fatih/color"
 )
 
 var (
@@ -29,12 +31,19 @@ type LogEntry struct {
 	Content string
 }
 
+var logColors = map[string]color.Attribute{
+	LogLevelError:   color.FgRed,    // 错误日志显示红色
+	LogLevelInfo:    color.FgYellow, // 信息日志显示黄色
+	LogLevelSuccess: color.FgGreen,  // 成功日志显示绿色
+	LogLevelDebug:   color.FgBlue,   // 调试日志显示蓝色
+}
+
 const (
 	LogLevelAll     = "ALL"
 	LogLevelDebug   = "DEBUG"
 	LogLevelInfo    = "INFO"
 	LogLevelSuccess = "SUCCESS"
-	LoglevelError   = "ERROR"
+	LogLevelError   = "ERROR"
 )
 
 // InitLogger 初始化日志系统
@@ -48,63 +57,79 @@ func formatLogMessage(entry *LogEntry) string {
 }
 
 func printLog(entry *LogEntry) {
-	//todo 输出
+	// 根据当前设置的日志级别过滤日志
+	shouldPrint := false
+	switch LogLevel {
+	case LogLevelDebug:
+		// DEBUG级别显示所有日志
+		shouldPrint = true
+	case LogLevelError:
+		// ERROR级别显示 ERROR、SUCCESS、INFO
+		shouldPrint = entry.Level == LogLevelError ||
+			entry.Level == LogLevelSuccess ||
+			entry.Level == LogLevelInfo
+	case LogLevelSuccess:
+		// SUCCESS级别显示 SUCCESS、INFO
+		shouldPrint = entry.Level == LogLevelSuccess ||
+			entry.Level == LogLevelInfo
+	case LogLevelInfo:
+		// INFO级别只显示 INFO
+		shouldPrint = entry.Level == LogLevelInfo
+	case LogLevelAll:
+		// ALL显示所有日志
+		shouldPrint = true
+	default:
+		// 默认只显示 INFO
+		shouldPrint = entry.Level == LogLevelInfo
+	}
+
+	if !shouldPrint {
+		return
+	}
+
 	OutputMutex.Lock()
 	defer OutputMutex.Unlock()
 	logMsg := formatLogMessage(entry)
-	fmt.Println(logMsg)
+
+	// 使用彩色输出
+	if colorAttr, ok := logColors[entry.Level]; ok {
+		color.New(colorAttr).Println(logMsg)
+	} else {
+		fmt.Println(logMsg)
+	}
+
 }
 
 func LogSuccess(content string, args ...any) {
-
-	entry := &LogEntry{
-		Level:   LogLevelSuccess,
-		Time:    time.Now(),
-		Content: ifelseformat(len(args) > 0, content, args...),
-	}
-	printLog(entry)
-
+	printLog(ifesle(content, LogLevelSuccess, args...))
 }
 
 func LogError(content string, args ...any) {
-	entry := &LogEntry{
-		Level:   LoglevelError,
-		Time:    time.Now(),
-		Content: ifelseformat(len(args) > 0, content, args...),
-	}
-	printLog(entry)
+	printLog(ifesle(content, LogLevelError, args...))
 }
 
 func LogDebug(content string, args ...any) {
-	entry := &LogEntry{
-		Level:   LogLevelDebug,
-		Time:    time.Now(),
-		Content: ifelseformat(len(args) > 0, content, args...),
-	}
-	printLog(entry)
+	printLog(ifesle(content, LogLevelDebug, args...))
 }
 
 func LogInfo(content string, args ...any) {
-	entry := &LogEntry{
-		Level:   LogLevelInfo,
-		Time:    time.Now(),
-		Content: ifelseformat(len(args) > 0, content, args...),
-	}
-	printLog(entry)
+
+	printLog(ifesle(content, LogLevelInfo, args...))
 }
 
-func _ifelse(condition bool, trueValue string, falseValue string) string {
-	if condition {
-		return trueValue
-	}
-	return falseValue
-}
-
-func ifelseformat(condition bool, trueValue string, args ...any) string {
-	if condition {
-		return fmt.Sprintf(trueValue, args...)
+func ifesle(content string, Level string, args ...any) *LogEntry {
+	if len(args) > 0 {
+		return &LogEntry{
+			Level:   Level,
+			Time:    time.Now(),
+			Content: fmt.Sprintf(content, args...),
+		}
 	} else {
-		return trueValue
+		return &LogEntry{
+			Level:   Level,
+			Time:    time.Now(),
+			Content: content,
+		}
 	}
 }
 

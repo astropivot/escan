@@ -2,6 +2,7 @@ package Plugins
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"escan/Common"
 	"fmt"
@@ -23,7 +24,7 @@ func NetBIOS(info *Common.HostInfo) error {
 
 		// 保存结果
 		details := map[string]interface{}{
-			"port": info.Ports,
+			"port": info.Port,
 		}
 
 		// 添加有效的 NetBIOS 信息
@@ -51,7 +52,9 @@ func NetBIOS(info *Common.HostInfo) error {
 		if netbios.OsVersion != "" {
 			details["os_version"] = netbios.OsVersion
 		}
-
+		if netbios.Mac != "" {
+			details["mac"] = netbios.Mac
+		}
 		scanResult := &Common.ScanResult{
 			Time:    time.Now(),
 			Type:    Common.SERVICE,
@@ -68,6 +71,10 @@ func NetBIOS(info *Common.HostInfo) error {
 
 func NetBIOS1(info *Common.HostInfo) (netbios NetBiosInfo, err error) {
 	netbios, err = GetNbnsname(info)
+	defer func() {
+		b, _ := json.MarshalIndent(netbios, "", "  ")
+		fmt.Printf("NetBIOS: %+v\n", string(b))
+	}()
 	var payload0 []byte
 	if netbios.ServerService != "" || netbios.WorkstationService != "" {
 		ss := netbios.ServerService
@@ -78,8 +85,9 @@ func NetBIOS1(info *Common.HostInfo) (netbios NetBiosInfo, err error) {
 		payload0 = append(payload0, []byte("\x81\x00\x00D ")...)
 		payload0 = append(payload0, name...)
 		payload0 = append(payload0, []byte("\x00 EOENEBFACACACACACACACACACACACACA\x00")...)
+
 	}
-	realhost := fmt.Sprintf("%s:%v", info.Host, info.Ports)
+	realhost := fmt.Sprintf("%s:%v", info.Host, info.Port)
 	var conn net.Conn
 	conn, err = Common.WrapperTcpWithTimeout("tcp", realhost, time.Duration(5)*time.Second)
 	if err != nil {
@@ -91,7 +99,7 @@ func NetBIOS1(info *Common.HostInfo) (netbios NetBiosInfo, err error) {
 		return
 	}
 
-	if info.Ports == "139" && len(payload0) > 0 {
+	if info.Port == 139 && len(payload0) > 0 {
 		_, err1 := conn.Write(payload0)
 		if err1 != nil {
 			return
@@ -121,6 +129,7 @@ func NetBIOS1(info *Common.HostInfo) (netbios NetBiosInfo, err error) {
 		return
 	}
 	netbios2, err := ParseNTLM(ret)
+	fmt.Printf("netbios2:%v\n", netbios2)
 	JoinNetBios(&netbios, &netbios2)
 	return
 }
@@ -230,6 +239,7 @@ var (
 )
 
 type NetBiosInfo struct {
+	Mac                string
 	GroupName          string
 	WorkstationService string `yaml:"WorkstationService"`
 	ServerService      string `yaml:"ServerService"`
@@ -313,6 +323,9 @@ func ParseNetBios(input []byte) (netbios NetBiosInfo, err error) {
 			msg += fmt.Sprintf("%s \n", name)
 		}
 	}
+	mac := data[18*num : 18*num+6]
+	_mac := net.HardwareAddr(mac)
+	netbios.Mac = _mac.String()
 	if len(msg) == 0 {
 		err = errNetBIOS
 		return

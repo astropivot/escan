@@ -3,6 +3,7 @@ package run
 import (
 	"escan/Common"
 	"fmt"
+	"net/netip"
 	"sync"
 )
 
@@ -36,13 +37,44 @@ func executeHostScan(info *Common.HostInfoList) {
 	Common.LogInfo("开始主机扫描")
 
 	chan_livehost := CheckLive(info)
-	for i := range chan_livehost {
-		fmt.Println(i)
-	}
+
 	chan_portScan_Result := getAlivePorts(chan_livehost, info)
-	for i := range chan_portScan_Result {
-		// fmt.Println(i.ip.String(), i.port, "live")
-		_ = i
+
+	ScanTasks := prepareScanTasks(chan_portScan_Result)
+
+	for task := range ScanTasks {
+		Common.LogInfo("开始插件扫描: %s", task.Name)
+		plugin := Common.PluginManager[task.Name]
+		plugin.ScanFunc(task.HostInfo)
 	}
 	fmt.Println("end")
+}
+
+type ScanTask struct {
+	Name     string
+	HostInfo *Common.HostInfo
+}
+
+func prepareScanTasks(chan_port_result chan netip.AddrPort) chan ScanTask {
+	tasks := make(chan ScanTask, 100)
+	go __task_generator(chan_port_result, tasks)
+	return tasks
+}
+
+func __task_generator(chan_port_result chan netip.AddrPort, chan_task chan ScanTask) {
+	for addrport := range chan_port_result {
+		for name, plugin := range Common.PluginManager {
+			if plugin.HasPort(int(addrport.Port())) {
+				chan_task <- ScanTask{
+					Name: name,
+					HostInfo: &Common.HostInfo{
+						Host: addrport.Addr().String(),
+						Port: int(addrport.Port()),
+					},
+				}
+			}
+		}
+
+	}
+	close(chan_task)
 }

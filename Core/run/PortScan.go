@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 )
@@ -106,6 +107,61 @@ func PortConnect(addr netip.AddrPort, results chan<- netip.AddrPort, timeout int
 		},
 	}
 	Common.SaveResult(portResult)
+
+	if !Common.IsSkipPortfinger && conn != nil {
+		scanner := NewPortInfoScanner(addr.Addr().String(), int(addr.Port()), conn, time.Duration(timeout)*time.Second)
+		if serviceInfo, err := scanner.Identify(); err == nil {
+			// result.Service = serviceInfo
+			var logMsg strings.Builder
+			logMsg.WriteString(fmt.Sprintf("服务识别 %s => ", addr.String()))
+			if serviceInfo.Name != "unknown" {
+				logMsg.WriteString(fmt.Sprintf("[%s]", serviceInfo.Name))
+			}
+			if serviceInfo.Version != "" {
+				logMsg.WriteString(fmt.Sprintf(" 版本:%s", serviceInfo.Version))
+			}
+			details := map[string]any{
+				"port":    addr.Port(),
+				"service": serviceInfo.Name,
+			}
+			if serviceInfo.Version != "" {
+				details["version"] = serviceInfo.Version
+			}
+			// 添加产品信息
+			if v, ok := serviceInfo.Extras["vendor_product"]; ok && v != "" {
+				details["product"] = v
+				logMsg.WriteString(fmt.Sprintf(" 产品:%s", v))
+			}
+
+			// 添加操作系统信息
+			if v, ok := serviceInfo.Extras["os"]; ok && v != "" {
+				details["os"] = v
+				logMsg.WriteString(fmt.Sprintf(" 系统:%s", v))
+			}
+
+			// 添加额外信息
+			if v, ok := serviceInfo.Extras["info"]; ok && v != "" {
+				details["info"] = v
+				logMsg.WriteString(fmt.Sprintf(" 信息:%s", v))
+			}
+			// 添加Banner信息
+			if len(serviceInfo.Banner) > 0 && len(serviceInfo.Banner) < 100 {
+				details["banner"] = strings.TrimSpace(serviceInfo.Banner)
+				logMsg.WriteString(fmt.Sprintf(" Banner:[%s]", strings.TrimSpace(serviceInfo.Banner)))
+			}
+			serviceResult := &Common.ScanResult{
+				Time:    time.Now(),
+				Type:    Common.SERVICE,
+				Target:  addr.Addr().String(),
+				Status:  "identified",
+				Details: details,
+			}
+			Common.SaveResult(serviceResult)
+
+			Common.LogSuccess("%s", logMsg.String())
+		}
+
+	}
 
 	// 构造扫描结果
 

@@ -32,7 +32,7 @@ func SshScan(info *Common.HostInfo) error {
 		return nil
 	}
 
-	target := fmt.Sprintf("%v:%v", info.Host, info.Ports)
+	target := fmt.Sprintf("%v:%v", info.Host, info.Port)
 	Common.LogDebug("开始扫描 %s", target)
 
 	// 创建全局超时上下文
@@ -128,7 +128,7 @@ func attemptKeyAuth(info *Common.HostInfo, username, keyPath string, timeoutSeco
 		Timeout: time.Duration(timeoutSeconds) * time.Second,
 	}
 
-	client, err := ssh.Dial("tcp", fmt.Sprintf("%v:%v", info.Host, info.Ports), config)
+	client, err := ssh.Dial("tcp", fmt.Sprintf("%v:%v", info.Host, info.Port), config)
 	if err != nil {
 		return false, err
 	}
@@ -309,7 +309,7 @@ func sshConnect(info *Common.HostInfo, username, password string, timeoutSeconds
 		Timeout: time.Duration(timeoutSeconds) * time.Second,
 	}
 
-	client, err := ssh.Dial("tcp", fmt.Sprintf("%v:%v", info.Host, info.Ports), config)
+	client, err := ssh.Dial("tcp", fmt.Sprintf("%v:%v", info.Host, info.Port), config)
 	if err != nil {
 		return false, err
 	}
@@ -328,7 +328,7 @@ func sshConnect(info *Common.HostInfo, username, password string, timeoutSeconds
 func logAndSaveSuccess(info *Common.HostInfo, target string, result *SshScanResult) {
 	var successMsg string
 	details := map[string]interface{}{
-		"port":     info.Ports,
+		"port":     info.Port,
 		"service":  "ssh",
 		"username": result.Credential.Username,
 		"type":     "weak-password",

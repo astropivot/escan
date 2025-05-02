@@ -2,9 +2,9 @@ package Common
 
 type HostInfo struct {
 	Host    string
-	Ports   string
-	url     string
-	infostr []string
+	Port    int
+	Url     string
+	Infostr []string
 }
 
 // ScanPlugin 定义扫描插件的结构

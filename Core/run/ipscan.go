@@ -20,39 +20,47 @@ const (
 func CheckLive(info *Common.HostInfoList) chan netip.Addr {
 	chan_livehost := make(chan netip.Addr, __LIVE_HOST_LEN)
 	chan_may_not_livehost := make(chan netip.Addr, __MAYBE_NOT_LIVE_HOST_LEN)
-
-	if Common.Args.IsPing {
-		Common.LogInfo("开始ping扫描")
-		go RunPing(info.IPs, chan_livehost, chan_may_not_livehost)
-		go RunArpScan(chan_livehost, chan_may_not_livehost)
+	if !Common.IsOnlyarp {
+		if Common.Args.IsPing {
+			Common.LogInfo("开始ping扫描")
+			go RunPing(info.IPs, chan_livehost, chan_may_not_livehost)
+			go RunArpScan(chan_livehost, chan_may_not_livehost)
+		} else {
+			Common.LogInfo("开始ICMP扫描")
+			go RunICMP(info.IPs, chan_livehost, chan_may_not_livehost)
+			go RunArpScan(chan_livehost, chan_may_not_livehost)
+		}
 	} else {
-		Common.LogInfo("开始ICMP扫描")
-		go RunICMP(info.IPs, chan_livehost, chan_may_not_livehost)
+		Common.LogInfo("跳过ip扫描,只进行arp扫描")
+		go gennotlivehost(info.IPs, chan_may_not_livehost)
 		go RunArpScan(chan_livehost, chan_may_not_livehost)
 	}
-
 	Common.LogInfo("返回chan")
 	return chan_livehost
 }
 
-func RunArpScan(chan_livehost chan netip.Addr, chan_may_not_livehost chan netip.Addr) {
-	Common.LogInfo("开始arp扫描")
-
-	for ip := range chan_may_not_livehost {
-		if _do_arp_scan(ip) {
-			// Common.LogDebug("arp扫描成功:%s", ip.String())
-			chan_livehost <- ip
-		}
-		// Common.LogDebug("arp扫描失败:%s", ip.String())
+func gennotlivehost(iplist []netip.Addr, chan_may_not_livehost chan netip.Addr) {
+	for _, ip := range iplist {
+		chan_may_not_livehost <- ip
 	}
-	close(chan_livehost)
-	Common.LogInfo("arp扫描结束")
+	close(chan_may_not_livehost)
 }
 
-func _do_arp_scan(ip netip.Addr) bool {
-	//_, err := arp.Lookup(net.IP(ip.AsSlice()))
-	//return err == nil
-	return false
+func cousumechan(chan_may_not_livehost chan netip.Addr, chan_livehost chan netip.Addr) {
+	CousumeAchan(chan_may_not_livehost)
+	close(chan_livehost)
+}
+
+func RunArpScan(chan_livehost chan netip.Addr, chan_may_not_livehost chan netip.Addr) {
+	if Common.Args.Isarp {
+		Common.LogInfo("开始arp扫描")
+		ScanARP(chan_may_not_livehost, chan_livehost)
+		close(chan_livehost)
+		Common.LogInfo("arp扫描结束")
+	} else {
+		cousumechan(chan_may_not_livehost, chan_livehost)
+		Common.LogInfo("arp扫描跳过")
+	}
 }
 
 func PingIcmpEchoRequest(ip net.IP) bool {
@@ -74,6 +82,7 @@ func RunPing(iplist []netip.Addr, chan_livehost chan netip.Addr, chan_may_not_li
 			}()
 
 			if PingwithOS_v2(host.String()) {
+				IsExistIPwithAdd(host)
 				chan_livehost <- host
 			} else {
 				chan_may_not_livehost <- host

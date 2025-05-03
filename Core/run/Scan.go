@@ -13,6 +13,34 @@ var (
 	Mutex     = &sync.Mutex{} // 用于保护共享资源
 )
 
+var (
+	ExistIP      = make(map[netip.Addr]struct{})
+	_lockExistIP = sync.Mutex{}
+)
+
+func IsExistIPwithAdd(ip netip.Addr) bool {
+	_lockExistIP.Lock()
+	defer _lockExistIP.Unlock()
+	_, ok := ExistIP[ip]
+	if !ok {
+		ExistIP[ip] = struct{}{}
+	}
+	return ok
+}
+
+func IsExistIP(ip netip.Addr) bool {
+	_lockExistIP.Lock()
+	defer _lockExistIP.Unlock()
+	_, ok := ExistIP[ip]
+	return ok
+}
+
+func CousumeAchan(chan_ip chan netip.Addr) {
+	for ip := range chan_ip {
+		_ = ip
+	}
+}
+
 func Scan(info *Common.HostInfoList) {
 	Common.LogInfo("开始信息扫描")
 
@@ -37,7 +65,10 @@ func executeHostScan(info *Common.HostInfoList) {
 	Common.LogInfo("开始主机扫描")
 
 	chan_livehost := CheckLive(info)
-
+	if Common.IsOnlyarp && Common.Args.Isarp {
+		CousumeAchan(chan_livehost)
+		return
+	}
 	chan_portScan_Result := getAlivePorts(chan_livehost, info)
 
 	ScanTasks := prepareScanTasks(chan_portScan_Result)

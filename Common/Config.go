@@ -62,6 +62,9 @@ var (
 	HashBytes        [][]byte
 	Domain           string // SMB域名
 	IsSkipPortfinger bool   // 是否跳过端口指纹识别
+
+	IsOnlyarp bool // 是否只进行arp扫描
+	ArpLan    = "" //设置arp网卡
 )
 
 var Args = args{}
@@ -89,11 +92,15 @@ func (args *args) SetFlag() {
 	flag.IntVar(&ModuleThreadNum, "module_thread_num", 10, "指定模块内部线程数")
 
 	flag.BoolVar(&args.IsSyncping, "syncping", false, "是否同步ping")
-	flag.BoolVar(&args.Isarp, "arp", false, "是否arp")
+
 	flag.BoolVar(&DisableBrute, "disable_brute", false, "是否禁用暴力破解模块")
 
 	flag.StringVar(&Domain, "domain", "", "指定SMB域名")
 	flag.BoolVar(&IsSkipPortfinger, "skip", false, "是否跳过端口指纹识别")
+
+	flag.BoolVar(&args.Isarp, "arp", false, "是否arp")
+	flag.StringVar(&ArpLan, "arplan", "WLAN", "设置arp网卡")
+	flag.BoolVar(&IsOnlyarp, "onlyarp", false, "是否只进行arp扫描")
 
 	flag.Parse()
 }

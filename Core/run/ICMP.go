@@ -14,27 +14,12 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
-var (
-	_ExistIP     = make(map[netip.Addr]struct{})
-	_lockExistIP = sync.Mutex{}
-)
-
-func isExistIPwithAdd(ip netip.Addr) bool {
-	_lockExistIP.Lock()
-	defer _lockExistIP.Unlock()
-	_, ok := _ExistIP[ip]
-	if !ok {
-		_ExistIP[ip] = struct{}{}
-	}
-	return ok
-}
-
 func RunICMP(iplist []netip.Addr, chan_live_result chan netip.Addr, chan_may_not_live chan netip.Addr) {
 	con4, con6, err := initListeners()
 	if err == nil {
 		_runICMP(iplist, chan_live_result, con4, con6)
 		for _, ip := range iplist {
-			if _, ok := _ExistIP[ip]; !ok {
+			if !IsExistIP(ip) {
 				chan_may_not_live <- ip
 			}
 		}
@@ -107,6 +92,7 @@ func _runICMP(iplist []netip.Addr, chan_live_result chan netip.Addr, con4, con6 
 	}
 	Common.LogDebug("wait for icmp response")
 	timer := time.NewTimer(Timeout)
+
 	<-timer.C
 	cancel()
 	wg.Wait()
@@ -140,7 +126,7 @@ func processResponse(ctx context.Context, wg *sync.WaitGroup, conn *icmp.PacketC
 				Common.LogDebug("err: %s", err.Error())
 				continue
 			}
-			if !isExistIPwithAdd(ip) {
+			if !IsExistIPwithAdd(ip) {
 				chan_live_result <- ip
 			}
 		}

@@ -2,7 +2,6 @@ package Plugins
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"escan/Common"
 	"fmt"
@@ -20,7 +19,7 @@ func NetBIOS(info *Common.HostInfo) error {
 	netbios, _ := NetBIOS1(info)
 	output := netbios.String()
 	if len(output) > 0 {
-		Common.LogSuccess("NetBios %-15s %s", info.Host, output)
+		Common.LogSuccess("NetBios %-15s %s mac:%s", info.Host, output, netbios.Mac)
 
 		// 保存结果
 		details := map[string]interface{}{
@@ -71,10 +70,10 @@ func NetBIOS(info *Common.HostInfo) error {
 
 func NetBIOS1(info *Common.HostInfo) (netbios NetBiosInfo, err error) {
 	netbios, err = GetNbnsname(info)
-	defer func() {
-		b, _ := json.MarshalIndent(netbios, "", "  ")
-		fmt.Printf("NetBIOS: %+v\n", string(b))
-	}()
+	// defer func() {
+	// 	b, _ := json.MarshalIndent(netbios, "", "  ")
+	// 	fmt.Printf("NetBIOS: %+v\n", string(b))
+	// }()
 	var payload0 []byte
 	if netbios.ServerService != "" || netbios.WorkstationService != "" {
 		ss := netbios.ServerService

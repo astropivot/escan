@@ -8,6 +8,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	//"github.com/dlclark/regexp2"
+
+	regexp2 "github.com/scorpionknifes/go-pcre"
 )
 
 //go:embed nmap-service-probes.txt
@@ -39,12 +43,12 @@ type Probe struct {
 }
 
 type Match struct {
-	IsSoft          bool           // 是否为软匹配
-	Service         string         // 服务名称
-	Pattern         string         // 匹配模式
-	VersionInfo     string         // 版本信息格式
-	FoundItems      []string       // 找到的项目
-	PatternCompiled *regexp.Regexp // 编译后的正则表达式
+	IsSoft          bool            // 是否为软匹配
+	Service         string          // 服务名称
+	Pattern         string          // 匹配模式
+	VersionInfo     string          // 版本信息格式
+	FoundItems      []string        // 找到的项目
+	PatternCompiled *regexp2.Regexp // 编译后的正则表达式
 }
 
 type Directive struct {
@@ -426,14 +430,14 @@ func (p *Probe) getMatch(data string) (match Match, err error) {
 	versionInfo := strings.Join(textSplited[1:], "")
 
 	// 解码并编译正则表达式
-	patternUnescaped, decodeErr := DecodePattern(pattern)
-	if decodeErr != nil {
-		Common.LogDebug("解码pattern失败: " + decodeErr.Error())
-		return match, decodeErr
-	}
-
+	// patternUnescaped, decodeErr := DecodePattern(pattern)
+	// if decodeErr != nil {
+	// 	Common.LogDebug("解码pattern失败: " + decodeErr.Error())
+	// 	return match, decodeErr
+	// }
+	patternUnescaped := pattern
 	patternUnescapedStr := string([]rune(string(patternUnescaped)))
-	patternCompiled, compileErr := regexp.Compile(patternUnescapedStr)
+	patternCompiled, compileErr := regexp2.Compile(patternUnescapedStr, 0)
 	if compileErr != nil {
 		Common.LogDebug("编译正则表达式失败: " + compileErr.Error())
 		return match, compileErr
@@ -442,7 +446,7 @@ func (p *Probe) getMatch(data string) (match Match, err error) {
 	// 设置match对象属性
 	match.Service = directive.DirectiveName
 	match.Pattern = pattern
-	match.PatternCompiled = patternCompiled
+	match.PatternCompiled = &patternCompiled
 	match.VersionInfo = versionInfo
 
 	Common.LogDebug(fmt.Sprintf("解析match成功: 服务=%s, Pattern=%s",
@@ -469,14 +473,14 @@ func (p *Probe) getSoftMatch(data string) (softMatch Match, err error) {
 	versionInfo := strings.Join(textSplited[1:], "")
 
 	// 解码并编译正则表达式
-	patternUnescaped, decodeErr := DecodePattern(pattern)
-	if decodeErr != nil {
-		Common.LogDebug("解码pattern失败: " + decodeErr.Error())
-		return softMatch, decodeErr
-	}
-
+	// patternUnescaped, decodeErr := DecodePattern(pattern)
+	// if decodeErr != nil {
+	// 	Common.LogDebug("解码pattern失败: " + decodeErr.Error())
+	// 	return softMatch, decodeErr
+	// }
+	patternUnescaped := pattern
 	patternUnescapedStr := string([]rune(string(patternUnescaped)))
-	patternCompiled, compileErr := regexp.Compile(patternUnescapedStr)
+	patternCompiled, compileErr := regexp2.Compile(patternUnescapedStr, 0)
 	if compileErr != nil {
 		Common.LogDebug("编译正则表达式失败: " + compileErr.Error())
 		return softMatch, compileErr
@@ -485,7 +489,7 @@ func (p *Probe) getSoftMatch(data string) (softMatch Match, err error) {
 	// 设置softMatch对象属性
 	softMatch.Service = directive.DirectiveName
 	softMatch.Pattern = pattern
-	softMatch.PatternCompiled = patternCompiled
+	softMatch.PatternCompiled = &patternCompiled
 	softMatch.VersionInfo = versionInfo
 
 	Common.LogDebug(fmt.Sprintf("解析softmatch成功: 服务=%s, Pattern=%s",
@@ -622,7 +626,7 @@ func (p *Probe) ContainsPort(testPort int) bool {
 func (m *Match) MatchPattern(response []byte) bool {
 	// 将响应转换为字符串并进行匹配
 	responseStr := string([]rune(string(response)))
-	foundItems := m.PatternCompiled.FindStringSubmatch(responseStr)
+	foundItems := FindStringSubmatch(m.PatternCompiled, responseStr)
 
 	if len(foundItems) > 0 {
 		m.FoundItems = foundItems
@@ -874,4 +878,26 @@ func (v *VScan) Init() {
 	v.parseProbesToMapKName()
 	v.SetusedProbes()
 	Common.LogDebug("VScan初始化完成")
+}
+
+func FindStringSubmatch(re *regexp2.Regexp, s string) []string {
+	matcher := re.MatcherString(s, 0)
+	if !matcher.Matches() {
+		return nil
+	}
+
+	// 提取所有捕获组
+	groupCount := matcher.Groups()
+	result := make([]string, groupCount+1)
+	result[0] = matcher.GroupString(0) // 整个匹配
+
+	for i := 1; i <= groupCount; i++ {
+		if matcher.Present(i) {
+			result[i] = matcher.GroupString(i)
+		} else {
+			result[i] = ""
+		}
+	}
+
+	return result
 }

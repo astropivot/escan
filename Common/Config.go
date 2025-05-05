@@ -65,6 +65,8 @@ var (
 
 	IsOnlyarp bool // 是否只进行arp扫描
 	ArpLan    = "" //设置arp网卡
+
+	IsPlugin bool // 是否启用插件
 )
 
 var Args = args{}
@@ -77,8 +79,8 @@ func (args *args) SetFlag() {
 
 	flag.StringVar(&args.Socks5Proxy, "socks5", "", "指定socks5代理")
 
-	flag.StringVar(&OutputFormat, "output_format", "csv", "指定输出格式")
-	flag.StringVar(&OutputFilePath, "output_file", "./output.csv", "指定输出文件路径")
+	// flag.StringVar(&OutputFormat, "output_format", "csv", "指定输出格式")
+	flag.StringVar(&OutputFilePath, "output_file", "./output.json", "指定输出文件路径")
 	flag.StringVar(&SshKeyPath, "ssh_key_path", "", "指定SSH私钥文件路径")
 
 	flag.StringVar(&LogLevel, "log_level", LogLevelSuccess, "指定日志输出级别")
@@ -101,6 +103,8 @@ func (args *args) SetFlag() {
 	flag.BoolVar(&args.Isarp, "arp", false, "是否arp")
 	flag.StringVar(&ArpLan, "arplan", "WLAN", "设置arp网卡")
 	flag.BoolVar(&IsOnlyarp, "onlyarp", false, "是否只进行arp扫描")
+
+	flag.BoolVar(&IsPlugin, "plugin", false, "是否启用插件")
 
 	flag.Parse()
 }
@@ -167,8 +171,8 @@ var PortMap = map[int][]string{
 	113:   {"GenericLines", "GetRequest", "Help"},
 	119:   {"GenericLines", "Help"},
 	130:   {"NotesRPC"},
-	135:   {"DNSVersionBindReqTCP", "SMBProgNeg"},
-	139:   {"GetRequest", "SMBProgNeg"},
+	135:   {"SMBProgNeg", "DNSVersionBindReqTCP"},
+	139:   {"SMBProgNeg", "GetRequest"},
 	143:   {"GetRequest"},
 	175:   {"NJE"},
 	199:   {"GenericLines", "RPCCheck", "Socks5", "Socks4"},

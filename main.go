@@ -11,7 +11,7 @@ func main() {
 	Common.InitLogger()
 	var info Common.HostInfoList
 	Common.Args.SetFlag()
-	fmt.Println("asasasssss")
+	fmt.Println("开始解析参数")
 	Common.Parse(&info)
 	if err := Common.InitOutput(); err != nil {
 		Common.LogError("InitOutput error:%s", err.Error())

@@ -72,13 +72,23 @@ func executeHostScan(info *Common.HostInfoList) {
 	chan_portScan_Result := getAlivePorts(chan_livehost, info)
 
 	ScanTasks := prepareScanTasks(chan_portScan_Result)
-
-	for task := range ScanTasks {
-		Common.LogInfo("开始插件扫描: %s", task.Name)
-		plugin := Common.PluginManager[task.Name]
-		plugin.ScanFunc(task.HostInfo)
+	if Common.IsPlugin {
+		for task := range ScanTasks {
+			Common.LogInfo("开始插件扫描: %s", task.Name)
+			plugin := Common.PluginManager[task.Name]
+			plugin.ScanFunc(task.HostInfo)
+		}
+	} else {
+		consumeScantasks(ScanTasks)
 	}
+
 	fmt.Println("end")
+}
+
+func consumeScantasks(chan_task chan ScanTask) {
+	for task := range chan_task {
+		_ = task
+	}
 }
 
 type ScanTask struct {

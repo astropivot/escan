@@ -2,8 +2,6 @@ package Common
 
 import (
 	"fmt"
-	"io"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -49,7 +47,7 @@ const (
 // InitLogger 初始化日志系统
 func InitLogger() {
 	// 禁用标准日志输出
-	log.SetOutput(io.Discard)
+	// log.SetOutput(io.Discard)
 }
 
 func formatLogMessage(entry *LogEntry) string {
@@ -92,8 +90,9 @@ func printLog(entry *LogEntry) {
 	logMsg := formatLogMessage(entry)
 
 	// 使用彩色输出
-	if colorAttr, ok := logColors[entry.Level]; ok {
-		color.New(colorAttr).Println(logMsg)
+	if _, ok := logColors[entry.Level]; ok {
+		// color.New(colorAttr).Println(logMsg)
+		fmt.Println(logMsg)
 	} else {
 		fmt.Println(logMsg)
 	}
@@ -124,13 +123,13 @@ func ifesle(content string, Level string, args ...any) *LogEntry {
 			Time:    time.Now(),
 			Content: fmt.Sprintf(content, args...),
 		}
-	} else {
-		return &LogEntry{
-			Level:   Level,
-			Time:    time.Now(),
-			Content: content,
-		}
 	}
+	return &LogEntry{
+		Level:   Level,
+		Time:    time.Now(),
+		Content: content,
+	}
+
 }
 
 func CheckErrs(err error) error {

@@ -59,6 +59,13 @@ var _existfile = false
 
 func InitOutput() error {
 	LogDebug("InitOutput_start")
+	if strings.HasSuffix(OutputFilePath, "json") {
+		OutputFormat = "json"
+	} else if strings.HasSuffix(OutputFilePath, "csv") {
+		OutputFormat = "csv"
+	} else if strings.HasSuffix(OutputFilePath, "txt") {
+		OutputFormat = "txt"
+	}
 	switch OutputFormat {
 	case "json", "txt", "csv":
 		// 有效格式

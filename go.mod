@@ -33,6 +33,19 @@ require (
 )
 
 require (
+	github.com/dlclark/regexp2 v1.11.5 // indirect
+	github.com/gijsbers/go-pcre v0.0.0-20161214203829-a84f3096ab3c
+	github.com/glenn-brown/golang-pkg-pcre v0.0.0-20120522223659-48bb82a8b8ce // indirect
 	github.com/golang-sql/civil v0.0.0-20190719163853-cb61b32ac6fe // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
+	go.elara.ws/pcre v0.0.0-20230805032557-4ce849193f64
+)
+
+require (
+	github.com/google/uuid v1.3.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
+	github.com/scorpionknifes/go-pcre v0.0.0-20210805092536-77486363b797
+	modernc.org/libc v1.16.8 // indirect
+	modernc.org/mathutil v1.4.1 // indirect
+	modernc.org/memory v1.1.1 // indirect
 )

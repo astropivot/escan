@@ -2,6 +2,7 @@ package Common
 
 import (
 	"bufio"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -10,13 +11,51 @@ import (
 	"strings"
 )
 
-func Parse(info *HostInfoList) {
-	Parseinfo(info)
+func Parse(info *HostInfoList) error {
+	return Parseinfo(info)
+}
+func getGateway() []net.Interface {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		LogInfo("get interfaces error: %v", err)
+		return nil
+	}
+	var gateways []net.Interface
+	for _, i := range interfaces {
+		if strings.Contains(Lan, ",") {
+			s := strings.Split(Lan, ",")
+			for _, v := range s {
+				if i.Name == v {
+					gateways = append(gateways, i)
+					continue
+				}
+			}
+		} else if i.Name == Lan {
+			return []net.Interface{i}
+		}
+	}
+	return nil
 }
 
-func Parseinfo(info *HostInfoList) {
+func Parseinfo(info *HostInfoList) error {
+	if IsOnlyarp && !Args.Isarp {
+		Args.Isarp = true
+	}
+	if Args.Isarp && Lan == "" {
+		return fmt.Errorf("arp扫描需要设置网卡Lan")
+	}
+	if !IsOnlyarp && IsSyn && Lan == "" {
+		return fmt.Errorf("synsar扫描需要设置网卡Lan")
+	}
+	if temp := getGateway(); temp != nil {
+		GateWay = temp
+	} else {
+		return fmt.Errorf("网卡不存在")
+	}
 	readToInfoHosts(info)
 	readToInfoPort(info)
+	return nil
+
 }
 
 func readToInfoHosts(info *HostInfoList) {
@@ -105,6 +144,13 @@ func readToInfoPort(info *HostInfoList) {
 					if _, ok := tmpPorts[_port]; !ok {
 						tmpPorts[_port] = struct{}{}
 					}
+				}
+			}
+		} else {
+			tmp := ParsePort(Args.Ports)
+			for _, _port := range tmp {
+				if _, ok := tmpPorts[_port]; !ok {
+					tmpPorts[_port] = struct{}{}
 				}
 			}
 		}

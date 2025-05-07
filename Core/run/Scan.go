@@ -64,31 +64,53 @@ func executeHostScan(info *Common.HostInfoList) {
 	Common.LogInfo("ip数,port数,url数: %d,%d,%d", len(info.IPs), len(info.Ports), len(info.Urls))
 	Common.LogInfo("开始主机扫描")
 
-	chan_livehost := CheckLive(info)
+	chan_liveipre := CheckLive(info)
+	chan_liveip := printiplive(chan_liveipre)
 	if Common.IsOnlyarp && Common.Args.Isarp {
-		CousumeAchan(chan_livehost)
+		CousumeAchan(chan_liveip)
 		return
 	}
-	chan_portScan_Result := getAlivePorts(chan_livehost, info)
+	chan_portScan_Result := getAlivePorts(chan_liveip, info)
 
-	ScanTasks := prepareScanTasks(chan_portScan_Result)
 	if Common.IsPlugin {
+		ScanTasks := prepareScanTasks(chan_portScan_Result)
 		for task := range ScanTasks {
 			Common.LogInfo("开始插件扫描: %s", task.Name)
 			plugin := Common.PluginManager[task.Name]
 			plugin.ScanFunc(task.HostInfo)
 		}
 	} else {
-		consumeScantasks(ScanTasks)
+		consumeScanResults(chan_portScan_Result)
 	}
 
 	fmt.Println("end")
 }
-
-func consumeScantasks(chan_task chan ScanTask) {
-	for task := range chan_task {
-		_ = task
+func consumeScanResults(chan_port_result chan netip.AddrPort) {
+	for addrport := range chan_port_result {
+		_ = addrport
 	}
+}
+
+func printiplive(ip_in chan netip.Addr) chan netip.Addr {
+	ip_out := make(chan netip.Addr, 10)
+	if Common.Isprintliveip {
+		go func(in chan netip.Addr) {
+			for ip := range in {
+				Common.LogSuccess("目标 %s 存活", ip.String())
+				ip_out <- ip
+			}
+			close(ip_out)
+		}(ip_in)
+	} else {
+		go func(in chan netip.Addr) {
+			for ip := range in {
+				ip_out <- ip
+			}
+			close(ip_out)
+		}(ip_in)
+	}
+
+	return ip_out
 }
 
 type ScanTask struct {

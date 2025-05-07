@@ -11,7 +11,7 @@ import (
 
 	//"github.com/dlclark/regexp2"
 
-	regexp2 "github.com/scorpionknifes/go-pcre"
+	"github.com/scorpionknifes/go-pcre"
 )
 
 //go:embed nmap-service-probes.txt
@@ -43,12 +43,12 @@ type Probe struct {
 }
 
 type Match struct {
-	IsSoft          bool            // 是否为软匹配
-	Service         string          // 服务名称
-	Pattern         string          // 匹配模式
-	VersionInfo     string          // 版本信息格式
-	FoundItems      []string        // 找到的项目
-	PatternCompiled *regexp2.Regexp // 编译后的正则表达式
+	IsSoft          bool         // 是否为软匹配
+	Service         string       // 服务名称
+	Pattern         string       // 匹配模式
+	VersionInfo     string       // 版本信息格式
+	FoundItems      []string     // 找到的项目
+	PatternCompiled *pcre.Regexp // 编译后的正则表达式
 }
 
 type Directive struct {
@@ -151,13 +151,15 @@ func (p *Probe) parseProbeInfo(probeStr string) {
 	p.Name = directive.DirectiveName
 	p.Data = strings.Split(directive.DirectiveStr, directive.Delimiter)[0]
 	p.Protocol = strings.ToLower(strings.TrimSpace(proto))
-
+	// temp, _ := DecodeData(p.Data)
+	// _ = temp
 	Common.LogDebug(fmt.Sprintf("探测器解析完成: 名称=%s, 数据=%s, 协议=%s",
 		p.Name, p.Data, p.Protocol))
+
 }
 
 // 从字符串解析探测器信息
-func (p *Probe) fromString(data string) error {
+func (p *Probe) FromString_(data string) error {
 	Common.LogDebug("开始解析探测器字符串数据")
 	var err error
 
@@ -360,7 +362,7 @@ func (v *VScan) parseProbesFromContent(content string) {
 	// 解析每个探测器
 	for _, probePart := range probeParts {
 		probe := Probe{}
-		if err := probe.fromString(probePart); err != nil {
+		if err := probe.FromString_(probePart); err != nil {
 			Common.LogDebug(fmt.Sprintf("解析探测器失败: %v", err))
 			continue
 		}
@@ -369,6 +371,33 @@ func (v *VScan) parseProbesFromContent(content string) {
 
 	v.AllProbes = probes
 	Common.LogDebug(fmt.Sprintf("成功解析 %d 个探测器规则", len(probes)))
+}
+
+func _testfunc() {
+	s := `match netbios-ssn m|^\0\0\0.\xffSMBr\0\0\0\0\x88..\0\0\0\0\0\0\0\0\0\0\0\0\0\0@\x06\0\0\x01\0\x01\xff\xff\0\0$|s p/Samba smbd/ v/4/ cpe:/a:samba:samba:4/`
+	probe := Probe{}
+	if err := probe.FromString_(s); err != nil {
+		Common.LogDebug(fmt.Sprintf("解析探测器失败: %v", err))
+	}
+	response := []byte{0x0, 0x0, 0x0, 0x25, 0xff, 0x53, 0x4d, 0x42, 0x72, 0x0, 0x0, 0x0, 0x0, 0x88, 0x3, 0x40, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x40, 0x6, 0x0, 0x0, 0x1, 0x0, 0x1, 0xff, 0xff, 0x0, 0x0}
+
+	fmt.Println(probe.Matchs)
+	for _, match := range *probe.Matchs {
+		mach := match.PatternCompiled.Matcher(response, 0)
+		if mach.Matches() {
+			fmt.Println(match.Service, "匹配成功")
+			groupCount := mach.Groups()
+			for i := range groupCount {
+				fmt.Printf("第%d个分组: %+v\n", i, mach.GroupIndices(i))
+				fmt.Printf("第%d个分组: %+s\n", i, mach.Group(i))
+				fmt.Printf("第%d个分组: %s\n", i, mach.GroupString(i))
+				fmt.Println("======================")
+			}
+
+		} else {
+			fmt.Println(match.Service, "匹配失败")
+		}
+	}
 }
 
 // 将探测器转换为名称映射
@@ -437,7 +466,7 @@ func (p *Probe) getMatch(data string) (match Match, err error) {
 	// }
 	patternUnescaped := pattern
 	patternUnescapedStr := string([]rune(string(patternUnescaped)))
-	patternCompiled, compileErr := regexp2.Compile(patternUnescapedStr, 0)
+	patternCompiled, compileErr := pcre.Compile(patternUnescapedStr, 0)
 	if compileErr != nil {
 		Common.LogDebug("编译正则表达式失败: " + compileErr.Error())
 		return match, compileErr
@@ -480,7 +509,7 @@ func (p *Probe) getSoftMatch(data string) (softMatch Match, err error) {
 	// }
 	patternUnescaped := pattern
 	patternUnescapedStr := string([]rune(string(patternUnescaped)))
-	patternCompiled, compileErr := regexp2.Compile(patternUnescapedStr, 0)
+	patternCompiled, compileErr := pcre.Compile(patternUnescapedStr, 0)
 	if compileErr != nil {
 		Common.LogDebug("编译正则表达式失败: " + compileErr.Error())
 		return softMatch, compileErr
@@ -625,8 +654,8 @@ func (p *Probe) ContainsPort(testPort int) bool {
 // MatchPattern 使用正则表达式匹配响应内容
 func (m *Match) MatchPattern(response []byte) bool {
 	// 将响应转换为字符串并进行匹配
-	responseStr := string([]rune(string(response)))
-	foundItems := FindStringSubmatch(m.PatternCompiled, responseStr)
+	// responseStr := string([]rune(string(response)))
+	foundItems := FindStringSubmatch(m.PatternCompiled, response)
 
 	if len(foundItems) > 0 {
 		m.FoundItems = foundItems
@@ -732,11 +761,11 @@ func DecodeData(s string) ([]byte, error) {
 		return nil, fmt.Errorf("empty input")
 	}
 
-	Common.LogDebug(fmt.Sprintf("开始解码数据，长度: %d, 内容: %q", len(s), s))
+	// Common.LogDebug(fmt.Sprintf("开始解码数据，长度: %d, 内容: %q", len(s), s))
 	sByteOrigin := []byte(s)
 
 	// 处理十六进制、八进制和结构化转义序列
-	matchRe := regexp.MustCompile(`\\(x[0-9a-fA-F]{2}|[0-7]{1,3}|[aftnrv])`)
+	matchRe := regexp.MustCompile(`\\(x[0-9a-fA-F]{2}|0|[aftnrv])`)
 	sByteDec := matchRe.ReplaceAllFunc(sByteOrigin, func(match []byte) []byte {
 		// 处理十六进制转义
 		if isHexCode(match) {
@@ -769,6 +798,9 @@ func DecodeData(s string) ([]byte, error) {
 			octalNum := match[2:]
 			byteNum, err := strconv.ParseInt(string(octalNum), 8, 32)
 			if err != nil {
+				if len(octalNum) == 0 {
+					return []byte{0}
+				}
 				return match
 			}
 			return []byte{uint8(byteNum)}
@@ -795,7 +827,7 @@ func DecodeData(s string) ([]byte, error) {
 		return nil, fmt.Errorf("decoded data is empty")
 	}
 
-	Common.LogDebug(fmt.Sprintf("解码完成，结果长度: %d, 内容: %x", len(sByteDec2), sByteDec2))
+	// Common.LogDebug(fmt.Sprintf("解码完成，结果长度: %d, 内容: %x", len(sByteDec2), sByteDec2))
 	return sByteDec2, nil
 }
 
@@ -809,6 +841,8 @@ func (t *Target) GetAddress() string {
 // trimBanner 处理和清理横幅数据
 func trimBanner(buf []byte) string {
 	Common.LogDebug("开始处理横幅数据")
+	// _ = buf
+	// buf = []byte{0x0, 0x0, 0x0, 0x25, 0xff, 0x53, 0x4d, 0x42, 0x72, 0x0, 0x0, 0x0, 0x0, 0x88, 0x3, 0x40, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x40, 0x6, 0x0, 0x0, 0x1, 0x0, 0x1, 0xff, 0xff, 0x0, 0x0}
 	bufStr := string(buf)
 
 	// 特殊处理SMB协议
@@ -816,6 +850,11 @@ func trimBanner(buf []byte) string {
 		banner := hex.EncodeToString(buf)
 		if len(banner) > 0xa+6 && banner[0xa:0xa+6] == "534d42" { // "SMB" in hex
 			Common.LogDebug("检测到SMB协议数据")
+			if len(banner) < 0xa2 {
+				Common.LogDebug("SMB数据长度不足,%s", fmt.Sprintf("%+v", buf))
+
+				return ""
+			}
 			plain := banner[0xa2:]
 			data, err := hex.DecodeString(plain)
 			if err != nil {
@@ -880,8 +919,8 @@ func (v *VScan) Init() {
 	Common.LogDebug("VScan初始化完成")
 }
 
-func FindStringSubmatch(re *regexp2.Regexp, s string) []string {
-	matcher := re.MatcherString(s, 0)
+func FindStringSubmatch(re *pcre.Regexp, s []byte) []string {
+	matcher := re.Matcher(s, 0)
 	if !matcher.Matches() {
 		return nil
 	}
@@ -889,11 +928,11 @@ func FindStringSubmatch(re *regexp2.Regexp, s string) []string {
 	// 提取所有捕获组
 	groupCount := matcher.Groups()
 	result := make([]string, groupCount+1)
-	result[0] = matcher.GroupString(0) // 整个匹配
+	result[0] = string(matcher.Group(0)) // 整个匹配
 
 	for i := 1; i <= groupCount; i++ {
 		if matcher.Present(i) {
-			result[i] = matcher.GroupString(i)
+			result[i] = string(matcher.Group(i))
 		} else {
 			result[i] = ""
 		}

@@ -43,6 +43,8 @@ require (
 
 require (
 	github.com/google/uuid v1.3.0 // indirect
+	github.com/kirinlabs/HttpRequest v1.1.3
+	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
 	github.com/scorpionknifes/go-pcre v0.0.0-20210805092536-77486363b797
 	modernc.org/libc v1.16.8 // indirect

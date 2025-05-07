@@ -283,7 +283,7 @@ func (i *Info) GetInfo(response []byte, probe *Probe) {
 
 	// 处理主要匹配规则
 	Common.LogDebug(fmt.Sprintf("处理探测器 %s 的主要匹配规则", probe.Name))
-	if matched, match := i.processMatches(response, probe.Matchs); matched {
+	if matched, match := i.ProcessMatches(response, probe.Matchs); matched {
 		Common.LogDebug("找到硬匹配")
 		return
 	} else if match != nil {
@@ -296,7 +296,7 @@ func (i *Info) GetInfo(response []byte, probe *Probe) {
 	if probe.Fallback != "" {
 		Common.LogDebug(fmt.Sprintf("尝试回退匹配: %s", probe.Fallback))
 		if fbProbe, ok := v.ProbesMapKName[probe.Fallback]; ok {
-			if matched, match := i.processMatches(response, fbProbe.Matchs); matched {
+			if matched, match := i.ProcessMatches(response, fbProbe.Matchs); matched {
 				Common.LogDebug("回退匹配成功")
 				return
 			} else if match != nil {
@@ -314,8 +314,8 @@ func (i *Info) GetInfo(response []byte, probe *Probe) {
 	}
 }
 
-// processMatches 处理匹配规则集
-func (i *Info) processMatches(response []byte, matches *[]Match) (bool, *Match) {
+// ProcessMatches 处理匹配规则集
+func (i *Info) ProcessMatches(response []byte, matches *[]Match) (bool, *Match) {
 	Common.LogDebug(fmt.Sprintf("开始处理匹配规则,共 %d 条", len(*matches)))
 	var softMatch *Match
 
@@ -347,7 +347,10 @@ func (i *Info) handleHardMatch(response []byte, match *Match) {
 
 	result.Service.Name = match.Service
 	result.Extras = extrasMap
-	result.Banner = trimBanner(response)
+	// result.Banner = trimBanner(response)
+	if tmp := trimBanner(response); tmp != "" {
+		result.Banner = tmp
+	}
 	result.Service.Extras = extrasMap
 
 	// 特殊处理 microsoft-ds 服务
@@ -363,8 +366,10 @@ func (i *Info) handleHardMatch(response []byte, match *Match) {
 // handleNoMatch 处理未找到匹配的情况
 func (i *Info) handleNoMatch(response []byte, result *Result, softFound bool, softMatch Match) {
 	Common.LogDebug("处理未匹配情况")
-	result.Banner = trimBanner(response)
-
+	// result.Banner = trimBanner(response)
+	if tmp := trimBanner(response); tmp != "" {
+		result.Banner = tmp
+	}
 	if !softFound {
 		// 尝试识别 HTTP 服务
 		if strings.Contains(result.Banner, "HTTP/") ||

@@ -2,6 +2,7 @@ package Common
 
 import (
 	"flag"
+	"net"
 	"net/netip"
 	"sync"
 )
@@ -63,10 +64,14 @@ var (
 	Domain           string // SMB域名
 	IsSkipPortfinger bool   // 是否跳过端口指纹识别
 
-	IsOnlyarp bool // 是否只进行arp扫描
-	ArpLan    = "" //设置arp网卡
+	IsOnlyarp bool            // 是否只进行arp扫描
+	Lan       = ""            //设置网卡
+	IsSyn     bool            // 是否启用syn扫描
+	IsPlugin  bool            // 是否启用插件
+	GateWay   []net.Interface //网关
 
-	IsPlugin bool // 是否启用插件
+	TEST          bool // 测试模式
+	Isprintliveip bool // 是否打印活跃IP
 )
 
 var Args = args{}
@@ -100,12 +105,15 @@ func (args *args) SetFlag() {
 	flag.StringVar(&Domain, "domain", "", "指定SMB域名")
 	flag.BoolVar(&IsSkipPortfinger, "skip", false, "是否跳过端口指纹识别")
 
+	flag.StringVar(&Lan, "lan", "WLAN", "设置扫描网卡(syn扫描,arp扫描)")
 	flag.BoolVar(&args.Isarp, "arp", false, "是否arp")
-	flag.StringVar(&ArpLan, "arplan", "WLAN", "设置arp网卡")
 	flag.BoolVar(&IsOnlyarp, "onlyarp", false, "是否只进行arp扫描")
 
+	flag.BoolVar(&IsSyn, "syn", false, "是否启用syn扫描,默认全连接扫描")
 	flag.BoolVar(&IsPlugin, "plugin", false, "是否启用插件")
 
+	flag.BoolVar(&TEST, "test", false, "测试模式")
+	flag.BoolVar(&Isprintliveip, "printip", true, "是否打印活跃IP")
 	flag.Parse()
 }
 

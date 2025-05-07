@@ -23,12 +23,7 @@ import (
 
 func ScanARP(ip_chan chan netip.Addr, chan_ip_result chan netip.Addr) {
 	// 获取系统所有网络接口的切片
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		Common.LogInfo("get interfaces error: %v", err)
-		panic(err)
-	}
-	Common.LogDebug("ARP scan on interfaces: %+v", ifaces)
+
 	// 获取所有设备接口的切片
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
@@ -36,29 +31,16 @@ func ScanARP(ip_chan chan netip.Addr, chan_ip_result chan netip.Addr) {
 	}
 	Common.LogDebug("ARP scan on devices: %+v", devices)
 	var wg sync.WaitGroup
-	for _, iface := range ifaces {
-
+	for _, iface := range Common.GateWay {
 		// 对获取到的所有接口进行arp扫描
-		if Common.ArpLan != "" {
-			if iface.Name == Common.ArpLan {
-				wg.Add(1)
-				go func(iface net.Interface) {
-					defer wg.Done()
-					if err := scan(&iface, &devices, ip_chan, chan_ip_result); err != nil {
-						Common.LogError("interface %v: %v", iface.Name, err)
-					}
-				}(iface)
+		wg.Add(1)
+		go func(iface net.Interface) {
+			defer wg.Done()
+			if err := scan(&iface, &devices, ip_chan, chan_ip_result); err != nil {
+				Common.LogError("interface %v: %v", iface.Name, err)
 			}
-		} else {
-			wg.Add(1)
-			go func(iface net.Interface) {
-				defer wg.Done()
-				if err := scan(&iface, &devices, ip_chan, chan_ip_result); err != nil {
-					Common.LogError("interface %v: %v", iface.Name, err)
-				}
-			}(iface)
+		}(iface)
 
-		}
 	}
 	wg.Wait()
 }
@@ -74,7 +56,7 @@ func scan(iface *net.Interface, devices *[]pcap.Interface, ip_chan chan netip.Ad
 				if ip4 := ipnet.IP.To4(); ip4 != nil {
 					addr = &net.IPNet{
 						IP:   ip4,
-						Mask: net.IPMask(net.IPv4Mask(255, 255, 255, 0)),
+						Mask: ipnet.Mask[len(ipnet.Mask)-4:],
 					}
 					break
 				}

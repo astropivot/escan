@@ -67,30 +67,28 @@ func PingIcmpEchoRequest(ip net.IP) bool {
 	return false
 }
 
-func RunPing(iplist []netip.Addr, chan_livehost chan netip.Addr, chan_may_not_livehost chan netip.Addr) {
+func RunPing(iplist []netip.Addr, IP_live chan netip.Addr, IP_die chan netip.Addr) {
 	var wg sync.WaitGroup
 	limiter := make(chan struct{}, Common.Args.ThreadPingNum)
-	for _, host := range iplist {
+	for _, ip := range iplist {
 		wg.Add(1)
 		limiter <- struct{}{}
 		time.Sleep(time.Microsecond * 10) // 防止频繁ping导致cpu占用过高
-
 		go func(host netip.Addr) {
 			defer func() {
 				wg.Done()
 				<-limiter
 			}()
-
-			if PingwithOS_v2(host.String()) {
+			if PingwithOS(host.String()) {
 				IsExistIPwithAdd(host)
-				chan_livehost <- host
+				IP_live <- host
 			} else {
-				chan_may_not_livehost <- host
+				IP_die <- host
 			}
-		}(host)
+		}(ip)
 	}
 	wg.Wait()
-	close(chan_may_not_livehost)
+	close(IP_die)
 }
 
 func PingwithOS_v1(host string) bool {
@@ -117,7 +115,7 @@ func PingwithOS_v1(host string) bool {
 	return strings.Contains(out, "true") && strings.Count(out, host) > 2
 }
 
-func PingwithOS_v2(host string) bool {
+func PingwithOS(host string) bool {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":

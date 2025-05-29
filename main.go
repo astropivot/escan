@@ -24,11 +24,22 @@ func main() {
 	}
 	if Common.TEST {
 		fmt.Println("测试模式")
-		_testfunc()
+		_testfunc2()
 		return
 	}
 	defer Common.CloseOutput()
 	run.Scan(&info)
+}
+
+func _testfunc2() {
+	fmt.Printf("gateways: %+v\n", Common.GateWay)
+	addr, err := Common.GateWay[0].Addrs()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("gateways: %+v\n%+v\n%s\n", addr, addr[1].Network(), addr[1].String())
+	fmt.Println("测试完成")
 }
 
 func _testfunc() {

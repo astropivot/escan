@@ -70,8 +70,6 @@ func _runICMP(iplist []netip.Addr, chan_live_result chan netip.Addr, con4, con6 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go processResponse(ctx, &wg, con4, ProtocolICMPv4, chan_live_result)
-	// go processResponse(ctx, &wg, con6, ProtocolICMPv6, chan_live_result)
-
 	sem := make(chan struct{}, MaxParallel)
 	for _, ip := range iplist {
 		sem <- struct{}{}
@@ -84,11 +82,8 @@ func _runICMP(iplist []netip.Addr, chan_live_result chan netip.Addr, con4, con6 
 			} else {
 				con6.WriteTo(wb, addr)
 			}
-			// Common.LogDebug("send icmp packet to %s", ip.String())
 			<-sem
 		}(ip)
-		// time.Sleep(10 * time.Millisecond)
-
 	}
 	Common.LogDebug("wait for icmp response")
 	timer := time.NewTimer(Timeout)

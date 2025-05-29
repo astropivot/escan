@@ -27,3 +27,7 @@ output.json
 result.txt
 t.dot
 output.csv
+escan
+Core/run/test/syn
+Core/run/test/syn.go
+Core/run/test/test

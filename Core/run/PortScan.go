@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/XinRoom/go-portScan/core/port"
+	"github.com/XinRoom/go-portScan/core/port/syn"
+	"github.com/panjf2000/ants/v2"
 )
 
 const __PORT_SCAN_RESULT_LEN = 65536 * 4
@@ -15,7 +21,11 @@ const __PORT_SCAN_RESULT_LEN = 65536 * 4
 func getAlivePorts(chan_livehost chan netip.Addr, info *Common.HostInfoList) chan netip.AddrPort {
 	Common.LogInfo("开始端口扫描")
 	chan_port_result := make(chan netip.AddrPort, __PORT_SCAN_RESULT_LEN)
-	go RunPortScan(chan_livehost, info.Ports, Common.Args.Timeout_portScan, chan_port_result)
+	if Common.IsSyn && runtime.GOOS != "windows" {
+		go SynScan(chan_livehost, info.Ports, chan_port_result)
+	} else {
+		go RunPortScan(chan_livehost, info.Ports, Common.Args.Timeout_portScan, chan_port_result)
+	}
 	return chan_port_result
 }
 
@@ -70,9 +80,12 @@ func PortConnect(addr netip.AddrPort, results chan<- netip.AddrPort, timeout int
 	var conn net.Conn
 
 	// 尝试建立TCP连接
+	// d := &net.Dialer{Timeout: time.Duration(timeout) * time.Second}
+	// conn, err = d.Dial("tcp4", fmt.Sprintf("%s:%v", net.IP(addr.Addr().AsSlice()), addr.Port()))
 	conn, err = Common.WrapperTcpWithTimeout("tcp4",
 		fmt.Sprintf("%s:%v", net.IP(addr.Addr().AsSlice()), addr.Port()),
 		time.Duration(timeout)*time.Second)
+	// conn, err = net.DialTimeout("tcp4", fmt.Sprintf("%s:%v", net.IP(addr.Addr().AsSlice()), addr.Port()), 3*time.Second)
 	if err == nil {
 		defer conn.Close()
 		isOpen = true
@@ -154,10 +167,75 @@ func PortConnect(addr netip.AddrPort, results chan<- netip.AddrPort, timeout int
 	}
 
 	// 构造扫描结果
-
-	results <- addr
+	if conn != nil {
+		results <- addr
+	}
 }
 
-func SynScan(chan_livehost chan netip.Addr, Ports []int, timeout int64, chan_portScan_result chan netip.AddrPort) {
-	// TODO
+//	func SynScan(chan_livehost chan netip.Addr, Ports []int, timeout int64, chan_portScan_result chan netip.AddrPort) {
+//		// TODO
+//	}
+func SynScan(chan_livehost chan netip.Addr, Ports []int, chan_portScan_result chan netip.AddrPort) {
+	Common.LogInfo("开始syn扫描")
+	single := make(chan struct{})
+	retChan := make(chan port.OpenIpPort, 65535)
+	go func() {
+		for ret := range retChan {
+			ip, ok := netip.AddrFromSlice(ret.Ip)
+			if !ok {
+				Common.LogError("syn ip parse error")
+				continue
+			}
+			chan_portScan_result <- netip.AddrPortFrom(ip, ret.Port)
+			Common.LogInfo("syn ip:%s port:%d open", ip, ret.Port)
+		}
+		single <- struct{}{}
+		close(chan_portScan_result)
+	}()
+
+	// 解析端口字符串并且优先发送 TopTcpPorts 中的端口, eg: 1-65535,top1000
+	// ports, err := port.ShuffleParseAndMergeTopPorts("top1000")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	flag := true
+	var wgPing sync.WaitGroup
+	var ss *syn.SynScanner
+	var err error
+	var poolPing *ants.PoolWithFunc
+	for ip := range chan_livehost {
+		if flag {
+			ss, err = syn.NewSynScanner(ip.AsSlice(), retChan, syn.DefaultSynOption)
+			if err != nil {
+				Common.LogError("syn scanner init error:%s", err)
+				os.Exit(1)
+			}
+			portScan := func(ip net.IP) {
+				for _, _port := range Ports { // port
+					ss.WaitLimiter()
+					ss.Scan(ip, uint16(_port), port.IpOption{}) // syn 不能并发，默认以网卡和驱动最高性能发包
+				}
+			}
+			var wgPing sync.WaitGroup
+			poolPing, _ = ants.NewPoolWithFunc(50, func(ip interface{}) {
+				_ip := net.IP(ip.(netip.Addr).AsSlice())
+				portScan(_ip)
+				wgPing.Done()
+			})
+			defer poolPing.Release()
+			flag = false
+
+			wgPing.Add(1)
+			poolPing.Invoke(ip)
+			continue
+		}
+		wgPing.Add(1)
+		poolPing.Invoke(ip)
+	}
+
+	wgPing.Wait()
+	ss.Wait()
+	ss.Close()
+	<-single
 }

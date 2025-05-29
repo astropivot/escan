@@ -10,7 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/main.go",
-            "args": ["-hosts", "10.19.0.93" ,"-ports", "60000"],
+            "args": ["-hosts", "10.17.126.2/28","-onlyip","-onlyarp"],
         }
     ]
 }

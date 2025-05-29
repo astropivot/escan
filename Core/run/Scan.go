@@ -2,7 +2,6 @@ package run
 
 import (
 	"escan/Common"
-	"fmt"
 	"net/netip"
 	"sync"
 )
@@ -65,6 +64,11 @@ func executeHostScan(info *Common.HostInfoList) {
 	Common.LogInfo("开始主机扫描")
 
 	chan_liveipre := CheckLive(info)
+	if Common.IsOnlyIp {
+		chan_liveip := printiplive(chan_liveipre)
+		CousumeAchan(chan_liveip)
+		return
+	}
 	chan_liveip := printiplive(chan_liveipre)
 	if Common.IsOnlyarp && Common.Args.Isarp {
 		CousumeAchan(chan_liveip)
@@ -82,8 +86,6 @@ func executeHostScan(info *Common.HostInfoList) {
 	} else {
 		consumeScanResults(chan_portScan_Result)
 	}
-
-	fmt.Println("end")
 }
 func consumeScanResults(chan_port_result chan netip.AddrPort) {
 	for addrport := range chan_port_result {

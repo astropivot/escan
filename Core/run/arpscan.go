@@ -71,7 +71,7 @@ func scan(iface *net.Interface, devices *[]pcap.Interface, ip_chan chan netip.Ad
 	} else if addr.Mask[0] != 0xff || addr.Mask[1] != 0xff {
 		return errors.New("mask means network is too large")
 	}
-	log.Printf("Using network range %v for interface %v", addr, iface.Name)
+	Common.LogDebug("Using network range %v for interface %v", addr, iface.Name)
 
 	// 主要解决windows中设备名称与接口名称不对应的问题
 	var deviceName string
@@ -104,6 +104,7 @@ func scan(iface *net.Interface, devices *[]pcap.Interface, ip_chan chan netip.Ad
 		return err
 	}
 	<-timer.C
+	time.Sleep(1000 * time.Millisecond)
 	Common.LogInfo("ARP scan on interface %v complete", iface.Name)
 	//readARP会重置计时器
 	return nil

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net"
 	"net/netip"
+	"runtime"
 	"sync"
 )
 
@@ -64,13 +65,15 @@ var (
 	Domain           string // SMB域名
 	IsSkipPortfinger bool   // 是否跳过端口指纹识别
 
+	IsOnlyIp  bool            // 是否只进行ip扫描
 	IsOnlyarp bool            // 是否只进行arp扫描
 	Lan       = ""            //设置网卡
 	IsSyn     bool            // 是否启用syn扫描
 	IsPlugin  bool            // 是否启用插件
 	GateWay   []net.Interface //网关
 
-	TEST          bool // 测试模式
+	TEST bool // 测试模式
+
 	Isprintliveip bool // 是否打印活跃IP
 )
 
@@ -85,7 +88,7 @@ func (args *args) SetFlag() {
 	flag.StringVar(&args.Socks5Proxy, "socks5", "", "指定socks5代理")
 
 	// flag.StringVar(&OutputFormat, "output_format", "csv", "指定输出格式")
-	flag.StringVar(&OutputFilePath, "output_file", "./output.json", "指定输出文件路径")
+	flag.StringVar(&OutputFilePath, "output_file", "./output.csv", "指定输出文件路径")
 	flag.StringVar(&SshKeyPath, "ssh_key_path", "", "指定SSH私钥文件路径")
 
 	flag.StringVar(&LogLevel, "log_level", LogLevelSuccess, "指定日志输出级别")
@@ -105,16 +108,21 @@ func (args *args) SetFlag() {
 	flag.StringVar(&Domain, "domain", "", "指定SMB域名")
 	flag.BoolVar(&IsSkipPortfinger, "skip", false, "是否跳过端口指纹识别")
 
-	flag.StringVar(&Lan, "lan", "WLAN", "设置扫描网卡(syn扫描,arp扫描)")
+	flag.StringVar(&Lan, "lan", "", "设置扫描网卡win默认WLAN,Linux默认eth0(syn扫描,arp扫描)")
 	flag.BoolVar(&args.Isarp, "arp", false, "是否arp")
 	flag.BoolVar(&IsOnlyarp, "onlyarp", false, "是否只进行arp扫描")
-
+	flag.BoolVar(&args.IsPing, "ping", false, "是否ping")
 	flag.BoolVar(&IsSyn, "syn", false, "是否启用syn扫描,默认全连接扫描")
 	flag.BoolVar(&IsPlugin, "plugin", false, "是否启用插件")
-
+	flag.BoolVar(&IsOnlyIp, "onlyip", false, "是否只进行ip扫描")
 	flag.BoolVar(&TEST, "test", false, "测试模式")
 	flag.BoolVar(&Isprintliveip, "printip", true, "是否打印活跃IP")
 	flag.Parse()
+	if Lan == "" && runtime.GOOS == "windows" {
+		Lan = "WLAN"
+	} else {
+		Lan = "eth0"
+	}
 }
 
 var Userdict = map[string][]string{
